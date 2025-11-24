@@ -1,9 +1,18 @@
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy initialization of OpenAI client
+let openai = null;
+
+const getOpenAIClient = () => {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("OPENAI_API_KEY is not set in environment variables");
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+};
 
 /**
  * Generate survey questions using OpenAI
@@ -14,17 +23,20 @@ const openai = new OpenAI({
  * @param {number} questionCount - Number of questions to generate (default: 5)
  * @returns {Promise<Array>} Array of generated questions
  */
-export const generateSurveyQuestions = async (surveyData, questionCount = 5) => {
+export const generateSurveyQuestions = async (
+  surveyData,
+  questionCount = 5
+) => {
   try {
     const { title, description, categoryOfSurvey } = surveyData;
-    
+
     // Create a detailed prompt for question generation
     const prompt = `
 You are an expert survey designer. Generate ${questionCount} high-quality survey questions based on the following information:
 
 Survey Title: ${title}
-Survey Description: ${description || 'No description provided'}
-Survey Category: ${categoryOfSurvey || 'General'}
+Survey Description: ${description || "No description provided"}
+Survey Category: ${categoryOfSurvey || "General"}
 
 Requirements:
 1. Generate exactly ${questionCount} questions
@@ -64,39 +76,45 @@ Example for RATING:
 
 Generate the questions now:`;
 
-    const completion = await openai.chat.completions.create({
+    // Get OpenAI client (lazy initialization)
+    const client = getOpenAIClient();
+
+    const completion = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "You are a professional survey designer who creates high-quality, unbiased survey questions. Always respond with valid JSON format."
+          content:
+            "You are a professional survey designer who creates high-quality, unbiased survey questions. Always respond with valid JSON format.",
         },
         {
           role: "user",
-          content: prompt
-        }
+          content: prompt,
+        },
       ],
       temperature: 0.7,
       max_tokens: 2000,
     });
 
     const responseText = completion.choices[0].message.content.trim();
-    
+
     // Try to parse the JSON response
     let questions;
     try {
       // Remove any markdown code blocks if present
-      const cleanedResponse = responseText.replace(/```json\n?|\n?```/g, '').trim();
+      const cleanedResponse = responseText
+        .replace(/```json\n?|\n?```/g, "")
+        .trim();
       questions = JSON.parse(cleanedResponse);
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response as JSON:', parseError);
-      console.error('Raw response:', responseText);
-      throw new Error('Failed to parse AI response. Please try again.');
+      console.error("Failed to parse OpenAI response as JSON:", parseError);
+      console.error("Raw response:", responseText);
+      throw new Error("Failed to parse AI response. Please try again.");
     }
 
     // Validate the response structure
     if (!Array.isArray(questions)) {
-      throw new Error('AI response is not an array of questions');
+      throw new Error("AI response is not an array of questions");
     }
 
     // Validate each question and add metadata
@@ -106,9 +124,9 @@ Generate the questions now:`;
       }
 
       // Ensure valid question types
-      const validTypes = ['TEXT', 'MCQ', 'RATING'];
+      const validTypes = ["TEXT", "MCQ", "RATING"];
       if (!validTypes.includes(question.question_type)) {
-        question.question_type = 'TEXT'; // Default fallback
+        question.question_type = "TEXT"; // Default fallback
       }
 
       // Ensure options is an array
@@ -128,15 +146,19 @@ Generate the questions now:`;
     });
 
     return validatedQuestions;
-
   } catch (error) {
-    console.error('OpenAI API Error:', error);
-    
+    console.error("OpenAI API Error:", error);
+
     // Return fallback questions if OpenAI fails
-    if (error.code === 'insufficient_quota' || error.code === 'rate_limit_exceeded') {
-      throw new Error('AI service temporarily unavailable. Please try again later.');
+    if (
+      error.code === "insufficient_quota" ||
+      error.code === "rate_limit_exceeded"
+    ) {
+      throw new Error(
+        "AI service temporarily unavailable. Please try again later."
+      );
     }
-    
+
     throw new Error(`Failed to generate questions: ${error.message}`);
   }
 };
@@ -149,7 +171,7 @@ Generate the questions now:`;
  */
 export const generateFallbackQuestions = (surveyData, questionCount = 5) => {
   const { title, categoryOfSurvey } = surveyData;
-  
+
   const fallbackQuestions = [
     {
       question_type: "RATING",
@@ -161,7 +183,13 @@ export const generateFallbackQuestions = (surveyData, questionCount = 5) => {
     {
       question_type: "MCQ",
       question_text: "How did you hear about us?",
-      options: ["Social Media", "Search Engine", "Word of Mouth", "Advertisement", "Other"],
+      options: [
+        "Social Media",
+        "Search Engine",
+        "Word of Mouth",
+        "Advertisement",
+        "Other",
+      ],
       order_index: 2,
       required: true,
     },
@@ -175,7 +203,13 @@ export const generateFallbackQuestions = (surveyData, questionCount = 5) => {
     {
       question_type: "MCQ",
       question_text: "How likely are you to recommend us to others?",
-      options: ["Very Likely", "Likely", "Neutral", "Unlikely", "Very Unlikely"],
+      options: [
+        "Very Likely",
+        "Likely",
+        "Neutral",
+        "Unlikely",
+        "Very Unlikely",
+      ],
       order_index: 4,
       required: true,
     },
@@ -185,7 +219,7 @@ export const generateFallbackQuestions = (surveyData, questionCount = 5) => {
       options: [],
       order_index: 5,
       required: false,
-    }
+    },
   ];
 
   return fallbackQuestions.slice(0, questionCount).map((question, index) => ({
