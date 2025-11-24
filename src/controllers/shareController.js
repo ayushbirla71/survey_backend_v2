@@ -65,8 +65,29 @@ export const validateToken = async (req, res) => {
 
     const shareToken = await prisma.shareToken.findFirst({
       where: { token_hash: token, used: false },
-      include: { survey: true },
+      include: {
+        survey: {
+          include: {
+            questions: {
+              include: {
+                options: {
+                  include: { mediaAsset: true },
+                },
+                rowOptions: {
+                  include: { mediaAsset: true },
+                },
+                columnOptions: {
+                  include: { mediaAsset: true },
+                },
+                mediaAsset: true,
+                category: true,
+              },
+            },
+          },
+        },
+      },
     });
+    console.log(">>>>> the value of the SHARE TOKEN is : ", shareToken);
 
     if (!shareToken)
       return res.status(404).json({ message: "Invalid or used token" });

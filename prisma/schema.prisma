@@ -275,6 +275,7 @@ model AIGeneratedQuestion {
   options           Json        @default("[]")
   order_index       Int         @default(0)
   required          Boolean     @default(true)
+  categoryId        String
 
   ai_prompt         String?
   ai_model          String?

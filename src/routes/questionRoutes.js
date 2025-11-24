@@ -5,6 +5,7 @@ import {
   updateQuestion,
   deleteQuestion,
   getQuestions,
+  getAiGeneratedQuestions,
 } from "../controllers/questionController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -25,6 +26,7 @@ router.post(
 );
 router.get("/survey/:surveyId", getQuestionsBySurvey);
 router.get("/", getQuestions);
+router.get("/:surveyId/", getAiGeneratedQuestions);
 router.put(
   "/:id",
   protect,
