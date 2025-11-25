@@ -191,11 +191,12 @@ export const submitResponseWithToken = async (req, res) => {
     const { token, user_metadata, answers } = req.body;
 
     const shareToken = await prisma.shareToken.findFirst({
-      where: { token_hash: token, used: false },
+      where: { token_hash: token },
       include: { survey: true },
     });
-    if (!shareToken)
-      return res.status(400).json({ message: "Invalid or used token" });
+    if (!shareToken) return res.status(400).json({ message: "Invalid Token." });
+    if (shareToken.used)
+      return res.status(400).json({ message: "Token already used." });
 
     const response = await createSurveyResponse(
       shareToken.surveyId,
@@ -203,7 +204,11 @@ export const submitResponseWithToken = async (req, res) => {
       answers
     );
 
-    if (shareToken.recipient_email || shareToken.recipient_mobile)
+    if (
+      shareToken.recipient_email ||
+      shareToken.recipient_mobile ||
+      shareToken.agentUserUniqueId
+    )
       await markTokenUsed(token);
 
     res.status(201).json({ message: "Response submitted", response });
@@ -754,9 +759,439 @@ export const getSurveyAnalytics = async (req, res) => {
             .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
             .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
             .sort((x, y) => new Date(y.t) - new Date(x.t))
-            .slice(0, 4)
+            .slice(0, 5)
             .map((x) => x.v);
-          sampleResponses = sorted.length ? sorted : texts.slice(0, 4);
+          sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
+        }
+
+        questionResults.push({
+          question: q.question_text,
+          type: uiType,
+          responses: qa.length,
+          ...(uiType === "text" ? { sampleResponses } : {}),
+        });
+      }
+    }
+
+    // Global NPS score
+    const npsScore = computeNPS(npsCandidates);
+
+    // Individual Responses section
+    // Attempt to infer rating max for display like "4/5"
+    const ratingMaxByQuestion = new Map();
+    for (const q of survey.questions) {
+      const qt = mapType(q.category?.type_name);
+      if (qt === "rating") {
+        // Prefer max numeric option text or option.rangeTo; default 5
+        const numericOptions = (q.options || [])
+          .map((o) => Number(o.text))
+          .filter((n) => !Number.isNaN(n));
+        const rangeTos = (q.options || [])
+          .map((o) => o.rangeTo)
+          .filter((n) => typeof n === "number");
+        const maxOpt = numericOptions.length
+          ? Math.max(...numericOptions)
+          : null;
+        const maxRange = rangeTos.length ? Math.max(...rangeTos) : null;
+        ratingMaxByQuestion.set(q.id, maxOpt ?? maxRange ?? 5);
+      }
+    }
+
+    const individualResponses = responses.map((r) => {
+      // completion time as earlier
+      const times = r.response_answers.map(
+        (a) => a.submitted_at || r.created_at
+      );
+      const earliest = times.length
+        ? times.reduce(
+            (min, t) => (new Date(t) < new Date(min) ? t : min),
+            times[0]
+          )
+        : r.created_at;
+      const latest = times.length
+        ? times.reduce(
+            (max, t) => (new Date(t) > new Date(max) ? t : max),
+            times[0]
+          )
+        : r.created_at;
+      const completionTime = minutesBetween(earliest, latest);
+
+      // answers rendered as strings
+      const answers = r.response_answers.map((a) => {
+        const q = a.question;
+        const uiType = mapType(q.category?.type_name);
+        let answer = "";
+
+        if (uiType === "single_choice" || uiType === "multiple_choice") {
+          let ids = tryParse(a.selected_option_ids);
+          if (!Array.isArray(ids)) ids = ids != null ? [ids] : [];
+          const labels = ids
+            .map((id) => q.options.find((o) => o.id === id)?.text ?? "")
+            .filter(Boolean);
+          answer =
+            uiType === "single_choice" ? labels[0] ?? "" : labels.join(", ");
+        } else if (uiType === "rating") {
+          let v =
+            a.scaleRatingValue != null ? Number(a.scaleRatingValue) : null;
+          if (v == null) {
+            const av = tryParse(a.answer_value);
+            if (typeof av === "number") v = av;
+            else if (
+              typeof av === "string" &&
+              av.trim() !== "" &&
+              !Number.isNaN(Number(av))
+            )
+              v = Number(av);
+            else {
+              let ids = tryParse(a.selected_option_ids);
+              if (!Array.isArray(ids)) ids = ids != null ? [ids] : [];
+              if (ids.length) {
+                const opt = q.options.find((o) => o.id === ids[0]);
+                if (opt?.text && !Number.isNaN(Number(opt.text)))
+                  v = Number(opt.text);
+              }
+            }
+          }
+          const maxV = ratingMaxByQuestion.get(q.id) ?? 5;
+          answer = v != null ? `${v}/${maxV}` : "";
+        } else if (uiType === "grid") {
+          const parts = [];
+          for (const g of a.grid_answers || []) {
+            if (!g.selected) continue;
+            const row =
+              q.rowOptions.find((o) => o.id === g.rowOptionId)?.text ?? "";
+            const col =
+              q.columnOptions.find((o) => o.id === g.columnOptionId)?.text ??
+              "";
+            if (row || col) parts.push(`${row}: ${col}`);
+          }
+          answer = parts.join("; ");
+        } else if (
+          uiType === "text" ||
+          uiType === "date" ||
+          uiType === "time"
+        ) {
+          const val = tryParse(a.answer_value);
+          answer =
+            typeof val === "string" ? val : val != null ? String(val) : "";
+        } else if (uiType === "file") {
+          // If storing mediaId, could fetch MediaAsset; here we expose mediaId
+          answer = a.mediaId ? `file:${a.mediaId}` : "";
+        } else {
+          const val = tryParse(a.answer_value);
+          answer =
+            typeof val === "string" ? val : val != null ? String(val) : "";
+        }
+
+        return { question: q.question_text, answer };
+      });
+
+      return {
+        id: r.id,
+        submittedAt: new Date(latest)
+          .toISOString()
+          .slice(0, 16)
+          .replace("T", " "),
+        completionTime,
+        answers,
+      };
+    });
+
+    // Timeline: group responses per day label
+    const byDay = new Map();
+    for (const r of responses) {
+      const label = fmtDayLabel(r.created_at);
+      byDay.set(label, (byDay.get(label) || 0) + 1);
+    }
+    const responseTimeline = Array.from(byDay.entries())
+      .sort((a, b) => {
+        // sort by date by reconstructing a Date from label
+        const [aMon, aDay] = a[0].split(" ");
+        const [bMon, bDay] = b[0].split(" ");
+        const aD = new Date(`${aMon} ${aDay}, ${new Date().getFullYear()}`);
+        const bD = new Date(`${bMon} ${bDay}, ${new Date().getFullYear()}`);
+        return aD - bD;
+      })
+      .map(([date, count]) => ({ date, responses: count }));
+
+    // Final payload
+    const payload = {
+      title: survey.title,
+      description: survey.description || "",
+      stats: {
+        totalResponses,
+        completionRate, // %
+        avgTime, // minutes
+        npsScore, // -100..100
+      },
+      questionResults,
+      individualResponses,
+      responseTimeline,
+    };
+
+    return res.json(payload);
+  } catch (err) {
+    console.error("getSurveyAnalytics error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const exportSurveyAnalytics = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+
+    // Survey + questions + option metadata
+    const survey = await prisma.survey.findUnique({
+      where: { id: surveyId },
+      include: {
+        questions: {
+          orderBy: { order_index: "asc" },
+          include: {
+            options: true,
+            rowOptions: true,
+            columnOptions: true,
+            category: true,
+          },
+        },
+      },
+    });
+
+    if (!survey) {
+      return res.status(404).json({ message: "Survey not found" });
+    }
+
+    // Pull all responses with answers and nested grid cells
+    const responses = await prisma.response.findMany({
+      where: { surveyId },
+      orderBy: { created_at: "asc" },
+      include: {
+        response_answers: {
+          include: {
+            grid_answers: true,
+            question: {
+              include: {
+                options: true,
+                rowOptions: true,
+                columnOptions: true,
+                category: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const totalResponses = responses.length;
+
+    // Completion rate: % of responses that answered all required questions
+    const requiredQIds = survey.questions
+      .filter((q) => q.required)
+      .map((q) => q.id);
+    const isComplete = (resp) => {
+      if (!requiredQIds.length) return true;
+      const answered = new Set(resp.response_answers.map((a) => a.questionId));
+      return requiredQIds.every((id) => answered.has(id));
+    };
+    const completedCount = responses.filter(isComplete).length;
+    const completionRate = Math.round(pct1(completedCount, totalResponses));
+
+    // Average completion time (minutes) using per-response min/max submitted_at
+    const perResponseTimes = responses
+      .map((r) => {
+        const times = r.response_answers.map(
+          (a) => a.submitted_at || r.created_at
+        );
+        if (!times.length) return 0;
+        const earliest = times.reduce(
+          (min, t) => (new Date(t) < new Date(min) ? t : min),
+          times[0]
+        );
+        const latest = times.reduce(
+          (max, t) => (new Date(t) > new Date(max) ? t : max),
+          times[0]
+        );
+        return minutesBetween(earliest, latest);
+      })
+      .filter((v) => typeof v === "number");
+    const avgTime = perResponseTimes.length
+      ? Math.round(
+          (perResponseTimes.reduce((s, v) => s + v, 0) /
+            perResponseTimes.length) *
+            10
+        ) / 10
+      : 0;
+
+    // Build question-wise aggregates
+    const answersByQuestion = new Map();
+    for (const r of responses) {
+      for (const a of r.response_answers) {
+        if (!answersByQuestion.has(a.questionId))
+          answersByQuestion.set(a.questionId, []);
+        answersByQuestion.get(a.questionId).push(a);
+      }
+    }
+
+    // Detect NPS question and collect candidate values
+    const npsCandidates = [];
+    const isNpsCategory = (q) => {
+      const t = q.category?.type_name?.toLowerCase?.() || "";
+      return t.includes("nps") || t.includes("net promoter");
+    };
+    const seems0to10 = (q) => {
+      // if options contain a range marker or numbers 0..10 in text, or this is rating/linear-scale
+      const qt = q.category?.type_name?.toLowerCase?.() || "";
+      const ratingLike = qt === "rating" || qt === "linear scale";
+      const has0to10Option = (q.options || []).some((o) => {
+        if (typeof o.text === "string") {
+          const num = Number(o.text.trim());
+          return !Number.isNaN(num) && num >= 0 && num <= 10;
+        }
+        return false;
+      });
+      return ratingLike && has0to10Option;
+    };
+
+    const questionResults = [];
+    for (const q of survey.questions) {
+      const rawType = q.category?.type_name || "text";
+      const uiType = mapType(rawType);
+      const qa = answersByQuestion.get(q.id) || [];
+      const responsesCount = qa.length;
+
+      // Choice distributions
+      if (uiType === "single_choice" || uiType === "multiple_choice") {
+        const counts = new Map(q.options.map((o) => [o.id, 0]));
+        for (const a of qa) {
+          let ids = tryParse(a.selected_option_ids);
+          if (!Array.isArray(ids)) ids = ids != null ? [ids] : [];
+          for (const id of ids)
+            if (counts.has(id)) counts.set(id, counts.get(id) + 1);
+        }
+        const data = q.options.map((o) => ({
+          option: o.text ?? "",
+          count: counts.get(o.id) || 0,
+          percentage: pct1(counts.get(o.id) || 0, responsesCount),
+        }));
+        questionResults.push({
+          question: q.question_text,
+          type: uiType,
+          responses: responsesCount,
+          data,
+        });
+      }
+
+      // Rating distribution + average
+      else if (uiType === "rating") {
+        const valueCount = new Map();
+        let sum = 0;
+        let n = 0;
+        // Try numeric from scaleRatingValue, else parse from answer_value or from selected option text
+        for (const a of qa) {
+          let v = null;
+          if (a.scaleRatingValue != null) {
+            v = Number(a.scaleRatingValue);
+          } else {
+            const av = tryParse(a.answer_value);
+            if (typeof av === "number") v = av;
+            else if (
+              typeof av === "string" &&
+              av.trim() !== "" &&
+              !Number.isNaN(Number(av))
+            )
+              v = Number(av);
+            else {
+              let ids = tryParse(a.selected_option_ids);
+              if (!Array.isArray(ids)) ids = ids != null ? [ids] : [];
+              if (ids.length) {
+                const opt = q.options.find((o) => o.id === ids[0]);
+                if (opt?.text && !Number.isNaN(Number(opt.text)))
+                  v = Number(opt.text);
+              }
+            }
+          }
+          if (typeof v === "number" && !Number.isNaN(v)) {
+            valueCount.set(String(v), (valueCount.get(String(v)) || 0) + 1);
+            sum += v;
+            n += 1;
+          }
+        }
+        const data = Array.from(valueCount.entries())
+          .sort((a, b) => Number(a[0]) - Number(b[0]))
+          .map(([rating, count]) => ({ rating, count }));
+        const averageRating = n ? Math.round((sum / n) * 10) / 10 : 0;
+
+        // If this looks like NPS, collect for global NPS
+        if (isNpsCategory(q) || seems0to10(q)) {
+          const npsVals = [];
+          for (const [k, c] of valueCount.entries()) {
+            const num = Number(k);
+            if (!Number.isNaN(num)) {
+              for (let i = 0; i < c; i++) npsVals.push(num);
+            }
+          }
+          npsCandidates.push(...npsVals);
+        }
+
+        questionResults.push({
+          question: q.question_text,
+          type: "rating",
+          responses: responsesCount,
+          averageRating,
+          data,
+        });
+      }
+
+      // Grid questions
+      else if (uiType === "grid") {
+        // Count per row/col
+        const cellCounts = new Map(); // key rowId__colId
+        for (const a of qa) {
+          for (const g of a.grid_answers || []) {
+            if (g.selected) {
+              const key = `${g.rowOptionId}__${g.columnOptionId}`;
+              cellCounts.set(key, (cellCounts.get(key) || 0) + 1);
+            }
+          }
+        }
+        const data = q.rowOptions.map((row) => ({
+          row: row.text ?? "",
+          cells: q.columnOptions.map((col) => {
+            const count = cellCounts.get(`${row.id}__${col.id}`) || 0;
+            return {
+              column: col.text ?? "",
+              count,
+              percentage: pct1(count, responsesCount),
+            };
+          }),
+        }));
+        questionResults.push({
+          question: q.question_text,
+          type: "grid",
+          responses: responsesCount,
+          data,
+        });
+      }
+
+      // Text/date/time/file: provide counts and samples for text
+      else {
+        let sampleResponses = [];
+        if (uiType === "text") {
+          const texts = qa
+            .map((a) => {
+              const val = tryParse(a.answer_value);
+              if (typeof val === "string") return val;
+              if (val != null) return String(val);
+              return null;
+            })
+            .filter((v) => typeof v === "string" && v.trim() !== "");
+          // take up to 4 recent samples (by submitted_at desc)
+          const sorted = qa
+            .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
+            .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
+            .sort((x, y) => new Date(y.t) - new Date(x.t))
+            .slice(0, 5)
+            .map((x) => x.v);
+          sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
         }
 
         questionResults.push({

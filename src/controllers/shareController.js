@@ -11,7 +11,7 @@ const generateTokenHash = () => crypto.randomBytes(20).toString("hex");
  */
 export const shareSurvey = async (req, res) => {
   try {
-    const { surveyId, type, recipients } = req.body;
+    const { surveyId, type, recipients, agentUserUniqueIds } = req.body;
 
     // Check survey exists
     const survey = await prisma.survey.findUnique({ where: { id: surveyId } });
@@ -19,7 +19,7 @@ export const shareSurvey = async (req, res) => {
 
     let shareTokens = [];
 
-    if (type === "PUBLIC") {
+    if (type === "NONE") {
       // Create a single public token
       const token_hash = generateTokenHash();
       const token = await prisma.shareToken.create({
@@ -27,10 +27,28 @@ export const shareSurvey = async (req, res) => {
       });
       shareTokens.push(token);
       const publicLink = `${process.env.FRONTEND_URL}/survey/${token.token_hash}`;
+
       return res.json({
         message: "Survey shared publicly",
         shareLink: publicLink,
         shareCode: token.token_hash,
+      });
+    } else if (type === "AGENT") {
+      // Create a token for each agent
+      for (const agentId of agentUserUniqueIds) {
+        const token_hash = generateTokenHash();
+        const token = await prisma.shareToken.create({
+          data: { surveyId, token_hash, agentUserUniqueId: agentId },
+        });
+        shareTokens.push({
+          agentUserUniqueId: agentId,
+          token_hash: `${process.env.FRONTEND_URL}/survey/${token_hash}`,
+        });
+      }
+
+      return res.json({
+        message: "Survey shared links created for agents",
+        tokens: shareTokens,
       });
     }
 
@@ -64,7 +82,7 @@ export const validateToken = async (req, res) => {
     const { token } = req.params;
 
     const shareToken = await prisma.shareToken.findFirst({
-      where: { token_hash: token, used: false },
+      where: { token_hash: token },
       include: {
         survey: {
           include: {
@@ -89,8 +107,9 @@ export const validateToken = async (req, res) => {
     });
     console.log(">>>>> the value of the SHARE TOKEN is : ", shareToken);
 
-    if (!shareToken)
-      return res.status(404).json({ message: "Invalid or used token" });
+    if (!shareToken) return res.status(404).json({ message: "Invalid Token." });
+    if (shareToken.used)
+      return res.status(400).json({ message: "Token already used." });
 
     res.json({ surveyId: shareToken.surveyId, survey: shareToken.survey });
   } catch (error) {

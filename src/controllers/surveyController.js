@@ -187,6 +187,14 @@ export const createSurvey_v2 = async (req, res) => {
         );
         console.log("Generated Questions:", generatedQuestions);
 
+        if (!generatedQuestions || generatedQuestions.length === 0) {
+          await prisma.survey.update({
+            where: { id: survey.id },
+            data: { autoGenerateQuestions: false },
+          });
+          throw new Error("No questions generated");
+        }
+
         // Save generated questions to database
         const questionsToCreatePromises = generatedQuestions.map(
           async (question, index) => {
