@@ -1283,7 +1283,8 @@ export const exportSurveyAnalytics = async (req, res) => {
             }
           }
           const maxV = ratingMaxByQuestion.get(q.id) ?? 5;
-          answer = v != null ? `${v}/${maxV}` : "";
+          answer = v != null ? `${v}` : "";
+          // answer = v != null ? `${v}/${maxV}` : "";
         } else if (uiType === "grid") {
           const parts = [];
           for (const g of a.grid_answers || []) {
