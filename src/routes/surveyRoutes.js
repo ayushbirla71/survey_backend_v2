@@ -11,6 +11,8 @@ import {
   getSurveyById,
   updateSurvey,
   deleteSurvey,
+  createSurvey_v2,
+  updateSurvey_v2,
 } from "../controllers/surveyController.js";
 
 const router = express.Router();
@@ -22,7 +24,7 @@ router.post(
   "/",
   protect,
   validateRequest(createSurveyValidation),
-  createSurvey
+  createSurvey_v2
 );
 router.get("/", protect, getSurveys);
 router.get("/:id", getSurveyById);
@@ -30,7 +32,7 @@ router.put(
   "/:id",
   protect,
   validateRequest(updateSurveyValidation),
-  updateSurvey
+  updateSurvey_v2
 );
 router.delete("/:id", protect, deleteSurvey);
 

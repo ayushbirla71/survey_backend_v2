@@ -20,6 +20,7 @@ enum SurveySendBy {
   EMAIL
   BOTH
   NONE
+  AGENT
 }
 
 enum FlowType {
@@ -234,11 +235,12 @@ model ResponseAnswer {
 }
 
 model ShareToken {
-  id               String   @id @default(uuid())
+  id               String   @id @default(uuid()) 
   surveyId         String
   survey           Survey   @relation(fields: [surveyId], references: [id])
   recipient_email  String?
   recipient_mobile String?
+  agentUserUniqueId String?
   token_hash       String
   expires_at       DateTime?
   used             Boolean  @default(false)
@@ -275,6 +277,7 @@ model AIGeneratedQuestion {
   options           Json        @default("[]")
   order_index       Int         @default(0)
   required          Boolean     @default(true)
+  categoryId        String
 
   ai_prompt         String?
   ai_model          String?

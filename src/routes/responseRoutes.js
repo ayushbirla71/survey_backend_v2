@@ -5,6 +5,7 @@ import {
   submitResponseWithToken,
   getSurveyResults,
   getSurveyAnalytics,
+  exportSurveyAnalytics,
 } from "../controllers/responseController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import validateRequest from "../middleware/validateRequest.js";
@@ -25,6 +26,7 @@ router.post(
 router.post("/", validateRequest(createResponseValidation), submitResponse);
 // router.get("/surveys/:surveyId/results", protect, getSurveyResults);
 router.get("/surveys/:surveyId/results", protect, getSurveyAnalytics);
+router.get("/surveys/:surveyId/export", protect, exportSurveyAnalytics);
 router.get("/survey/:surveyId", protect, getResponsesBySurvey);
 
 export default router;

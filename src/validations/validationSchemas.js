@@ -28,7 +28,7 @@ export const createSurveyValidation = Joi.object({
   description: Joi.string().max(500).required(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
-    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE")
+    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT")
     .optional(),
   settings: Joi.object({
     isAnonymous: Joi.boolean().optional(),
@@ -48,7 +48,7 @@ export const updateSurveyValidation = Joi.object({
   description: Joi.string().max(500).optional(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
-    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE")
+    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT")
     .optional(),
   settings: Joi.object({
     isAnonymous: Joi.boolean().optional(),
@@ -72,6 +72,8 @@ export const createQuestionValidation = Joi.object({
   question_text: Joi.string().min(1).max(500).required(),
   // options: Joi.array().items(Joi.string()).required(),
   options: Joi.array().optional(),
+  rowOptions: Joi.array().optional(),
+  columnOptions: Joi.array().optional(),
   mediaId: Joi.string().uuid().optional(),
   categoryId: Joi.string().uuid().required(),
   // subCategoryId: Joi.string().uuid().required(),
@@ -84,7 +86,9 @@ export const updateQuestionValidation = Joi.object({
   //   .valid("TEXT", "MCQ", "RATING", "IMAGE", "VIDEO", "AUDIO", "FILE", "MATRIX")
   //   .optional(),
   question_text: Joi.string().min(1).max(500).optional(),
-  options: Joi.array().items(Joi.string()).optional(),
+  options: Joi.array().optional(),
+  rowOptions: Joi.array().optional(),
+  columnOptions: Joi.array().optional(),
   mediaId: Joi.string().uuid().optional(),
   categoryId: Joi.string().uuid().optional(),
   // subCategoryId: Joi.string().uuid().optional(),
@@ -119,8 +123,10 @@ export const createResponseWithTokenValidation = Joi.object({
     .items(
       Joi.object({
         questionId: Joi.string().uuid().required(),
-        answer_type: Joi.string().required(),
-        answer_value: Joi.string().allow(null, ""),
+        // answer_type: Joi.string().required(),
+        answer_value: Joi.alternatives()
+          .try(Joi.string().allow(null, ""), Joi.number(), Joi.array())
+          .allow(null, ""), // explicitly allow null or empty string
         media: Joi.array()
           .items(Joi.object({ type: Joi.string(), url: Joi.string() }))
           .optional(),
@@ -163,7 +169,9 @@ export const approveAIQuestionValidation = Joi.object({
 // -------- SHARE --------
 export const shareSurveyValidation = Joi.object({
   surveyId: Joi.string().uuid().required(),
-  type: Joi.string().valid("PUBLIC", "PERSONALIZED").required(),
+  type: Joi.string()
+    .valid("NONE", "AGENT", "WHATSAPP", "EMAIL", "BOTH")
+    .required(),
   recipients: Joi.array()
     .items(
       Joi.object({
@@ -174,9 +182,19 @@ export const shareSurveyValidation = Joi.object({
       })
     )
     .when("type", {
-      is: "PERSONALIZED",
+      is: Joi.valid("WHATSAPP", "EMAIL", "BOTH"),
       then: Joi.required().messages({
-        "any.required": "Recipients are required for PERSONALIZED sharing",
+        "any.required":
+          "Recipients are required when type is WHATSAPP, EMAIL, or BOTH",
+      }),
+      otherwise: Joi.optional(),
+    }),
+  agentUserUniqueIds: Joi.array()
+    .items(Joi.string())
+    .when("type", {
+      is: "AGENT",
+      then: Joi.required().messages({
+        "any.required": "Agent User Unique IDs are required when type is AGENT",
       }),
       otherwise: Joi.optional(),
     }),

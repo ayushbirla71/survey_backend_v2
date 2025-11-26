@@ -230,3 +230,394 @@ export const generateFallbackQuestions = (surveyData, questionCount = 5) => {
     confidence_score: 0.5,
   }));
 };
+
+/**
+ * Generates a survey JSON object using the Gemini API.
+ * @param {string} title - The title of the survey.
+ * @param {string} category - The category of the survey.
+ * @param {string} description - A brief description of the survey.
+ * @returns {Promise<object | null>} - The generated survey JSON object, or null on error.
+ */
+// export const generateSurveyQuestionsWithCategory = async (
+//   title,
+//   category,
+//   description
+// ) => {
+//   try {
+//     console.log(">>>>>> the value of the CATEGORY is : ", category);
+//     // --- Main Function to Generate Survey ---
+
+//     // 1. The Question Type Map (from your Untitled-2.json)
+//     const questionTypeMap = {
+//       date: "276364c5-1b96-4b4e-a362-833973532241",
+//       paragraph: "4234edbe-bb13-4acd-918b-ea83e3107eb4",
+//       dropdown: "516210a8-16c5-465c-aa84-7a02b3c032a4",
+//       "file upload": "56abdae6-9b0d-4313-9187-8330ae8121e5",
+//       "checkbox grid": "60516591-f744-4efd-ae56-58d8e1ca911c",
+//       checkboxes: "86e2d9dc-2f36-47ff-b502-cc24532091d9",
+//       "linear scale": "97140e9a-acf8-4293-93b6-022a6962bce1",
+//       "multiple choice": "ad17eee6-d97e-4bdc-9870-2881ea2b391f",
+//       rating: "b0a418b1-f832-4b02-a44a-683008e6761b",
+//       time: "d16778d4-85bc-4fac-8815-2bb2f1346fd9",
+//       "multi-choice grid": "d6c6b58e-0037-4295-a9ec-4a1b6ff03429",
+//       "short answer": "e690972c-0956-442e-a0b4-3c109c3d42f7",
+//     };
+
+//     // 2. The JSON Schema (Based on your survey_token_JSON_response.JSON)
+//     const surveyResponseSchema = {
+//       type: "OBJECT",
+//       properties: {
+//         survey: {
+//           type: "OBJECT",
+//           properties: {
+//             title: { type: "STRING" },
+//             description: { type: "STRING" },
+//             no_of_questions: { type: "INTEGER" },
+//             questions: {
+//               type: "ARRAY",
+//               items: {
+//                 type: "OBJECT",
+//                 properties: {
+//                   question_type: { type: "STRING", enum: ["TEXT"] },
+//                   question_text: { type: "STRING" },
+//                   order_index: { type: "INTEGER" },
+//                   required: { type: "BOOLEAN" },
+//                   categoryId: { type: "STRING" },
+//                   options: {
+//                     type: "ARRAY",
+//                     items: {
+//                       type: "OBJECT",
+//                       properties: {
+//                         text: { type: "STRING", nullable: true },
+//                         rowQuestionOptionId: { type: "STRING", nullable: true },
+//                         columnQuestionOptionId: {
+//                           type: "STRING",
+//                           nullable: true,
+//                         },
+//                         rangeFrom: { type: "INTEGER", nullable: true },
+//                         rangeTo: { type: "INTEGER", nullable: true },
+//                         fromLabel: { type: "STRING", nullable: true },
+//                         toLabel: { type: "STRING", nullable: true },
+//                       },
+//                     },
+//                   },
+//                 },
+//               },
+//             },
+//           },
+//         },
+//       },
+//     };
+
+//     // 3. The System Instruction (Prompt Engineering)
+//     const systemPrompt = `
+//     You are an expert survey generation assistant. Your task is to generate a complete survey in JSON format with high-quality, relevant questions.
+//     You will be given a title, category, and description for a survey.
+
+//     RULES:
+//     1.  Generate an appropriate number of questions (e.g., 5-10) based on the survey's description.
+//     2.  The 'title' and 'description' in the JSON output MUST exactly match the user's input.
+//     3.  For each question, you MUST select the most appropriate question type (e.g., "multiple choice", "linear scale", "short answer") from the user's provided map.
+//     4.  The generated questions MUST be high-quality, clear, and directly relevant to the survey's topic.
+//     5.  The survey as a whole MUST use a minimum of 3 different question types to ensure variety.
+//     6.  You MUST use the "Question Type Map" provided by the user to find the correct 'categoryId' for the question type you select.
+//     7.  You MUST generate relevant 'options' for each question type:
+//         - For "linear scale" or "rating", set 'rangeFrom', 'rangeTo', and optionally 'fromLabel'/'toLabel'.
+//         - For "multiple choice", "checkboxes", or "dropdown", add several relevant text options.
+//         - For "short answer" or "paragraph", the 'options' array MUST be empty.
+//     8.  The final output MUST be a single JSON object matching the provided schema.
+//   `;
+
+//     // 4. The User Content (The actual data)
+//     const userQuery = `
+//     Please generate a survey with the following details:
+//     - Title: "${title}"
+//     - Category: "${category}"
+//     - Description: "${description}"
+
+//     Here is the Question Type Map you MUST use for all 'categoryId' fields:
+//     ${JSON.stringify(questionTypeMap, null, 2)}
+//   `;
+
+//     // 5. Construct the API Payload
+//     const payload = {
+//       systemInstruction: {
+//         parts: [{ text: systemPrompt }],
+//       },
+//       contents: [
+//         {
+//           parts: [{ text: userQuery }],
+//         },
+//       ],
+//       generationConfig: {
+//         responseMimeType: "application/json",
+//         responseSchema: surveyResponseSchema,
+//       },
+//     };
+
+//     // 6. Make the API Call
+//     // NOTE: The API key is left as "" here.
+//     // In a real Node.js environment, you would get this from process.env.API_KEY
+//     // For this tool's environment, "" is correct.
+//     const apiKey = "AIzaSyBssUT0dLWN3FpcovQLmcsarcL_DwKa_jY"; // Leave empty, Canvas will handle it
+//     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+//     // console.log("Calling Gemini API...");
+
+//     try {
+//       const response = await fetch(apiUrl, {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify(payload),
+//       });
+
+//       if (!response.ok) {
+//         const errorBody = await response.text();
+//         throw new Error(
+//           `API call failed with status: ${response.status}\nBody: ${errorBody}`
+//         );
+//       }
+
+//       const result = await response.json();
+
+//       if (
+//         result.candidates &&
+//         result.candidates.length > 0 &&
+//         result.candidates[0].content &&
+//         result.candidates[0].content.parts
+//       ) {
+//         const jsonText = result.candidates[0].content.parts[0].text;
+//         // The API guarantees this text is valid JSON matching your schema
+//         const surveyData = JSON.parse(jsonText);
+
+//         // Update the question count based on what the AI generated
+//         if (surveyData.survey && surveyData.survey.questions) {
+//           surveyData.survey.no_of_questions =
+//             surveyData.survey.questions.length;
+//         }
+
+//         return surveyData?.survey?.questions;
+//       } else {
+//         // Handle cases where the response might be blocked or empty
+//         console.error(
+//           "API response was missing expected content:",
+//           JSON.stringify(result, null, 2)
+//         );
+//         throw new Error("No valid response content from API.");
+//       }
+//     } catch (error) {
+//       console.error("Error generating survey:", error.message);
+//       return null;
+//     }
+//   } catch (err) {
+//     console.log(
+//       ">>>> the error in the generateSurveyQuestionsWithCategory function is : ",
+//       err
+//     );
+//     return null;
+//   }
+// };
+
+export const generateSurveyQuestionsWithCategory = async (
+  title,
+  category,
+  description
+) => {
+  console.log(
+    ">>>>> the value of the TITLE is : ",
+    title,
+    " and Description is : ",
+    description
+  );
+  try {
+    console.log(">>>>>> the value of the CATEGORY is : ", category);
+    // --- Main Function to Generate Survey ---
+
+    // 1. The Question Type Map (from your Untitled-2.json)
+    const questionTypeMap = {
+      date: "276364c5-1b96-4b4e-a362-833973532241",
+      paragraph: "4234edbe-bb13-4acd-918b-ea83e3107eb4",
+      dropdown: "516210a8-16c5-465c-aa84-7a02b3c032a4",
+      "file upload": "56abdae6-9b0d-4313-9187-8330ae8121e5",
+      "checkbox grid": "60516591-f744-4efd-ae56-58d8e1ca911c",
+      checkboxes: "86e2d9dc-2f36-47ff-b502-cc24532091d9",
+      "linear scale": "97140e9a-acf8-4293-93b6-022a6962bce1",
+      "multiple choice": "ad17eee6-d97e-4bdc-9870-2881ea2b391f",
+      rating: "b0a418b1-f832-4b02-a44a-683008e6761b",
+      time: "d16778d4-85bc-4fac-8815-2bb2f1346fd9",
+      "multi-choice grid": "d6c6b58e-0037-4295-a9ec-4a1b6ff03429",
+      "short answer": "e690972c-0956-442e-a0b4-3c109c3d42f7",
+    };
+
+    // 2. The JSON Schema (Based on your survey_token_JSON_response.JSON)
+    // 🚨 START OF CHANGE: Updated surveyResponseSchema for grid options
+    const optionSchema = {
+      type: "OBJECT",
+      properties: {
+        text: { type: "STRING", nullable: true },
+        rowQuestionOptionId: { type: "STRING", nullable: true },
+        columnQuestionOptionId: { type: "STRING", nullable: true },
+        rangeFrom: { type: "INTEGER", nullable: true },
+        rangeTo: { type: "INTEGER", nullable: true },
+        fromLabel: { type: "STRING", nullable: true },
+        toLabel: { type: "STRING", nullable: true },
+      },
+    };
+
+    const surveyResponseSchema = {
+      type: "OBJECT",
+      properties: {
+        survey: {
+          type: "OBJECT",
+          properties: {
+            title: { type: "STRING" },
+            description: { type: "STRING" },
+            no_of_questions: { type: "INTEGER" },
+            questions: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  question_type: { type: "STRING", enum: ["TEXT"] },
+                  question_text: { type: "STRING" },
+                  order_index: { type: "INTEGER" },
+                  required: { type: "BOOLEAN" },
+                  categoryId: { type: "STRING" },
+                  // Standard options array for non-grid types
+                  options: {
+                    type: "ARRAY",
+                    items: optionSchema,
+                    nullable: true, // Make nullable for grid types
+                  },
+                  // Row options array for grid types (multi-choice grid, checkbox grid)
+                  rowOptions: {
+                    type: "ARRAY",
+                    items: optionSchema,
+                    nullable: true,
+                  },
+                  // Column options array for grid types (multi-choice grid, checkbox grid)
+                  columnOptions: {
+                    type: "ARRAY",
+                    items: optionSchema,
+                    nullable: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    // 🚨 END OF CHANGE: Updated surveyResponseSchema for grid options
+
+    // 3. The System Instruction (Prompt Engineering)
+    // 🚨 START OF CHANGE: Updated System Prompt Rule 7
+    const systemPrompt = `
+		You are an expert survey generation assistant. Your task is to generate a complete survey in JSON format with high-quality, relevant questions.
+		You will be given a title, category, and description for a survey.
+
+		RULES:
+    0.  The JSON MUST NOT exceed 2000 characters in total.
+		1.  Generate an appropriate number of questions (e.g., 5-7) based on the survey's description must be 5 to 7.
+		2.  The 'title' and 'description' in the JSON output MUST exactly match the user's input.
+		3.  For each question, you MUST select the most appropriate question type (e.g., "multiple choice", "linear scale", "short answer") from the user's provided map.
+		4.  The generated questions MUST be high-quality, clear, and directly relevant to the survey's topic.
+		5.  The survey as a whole MUST use a minimum of 3 different question types to ensure variety.
+		6.  You MUST use the "Question Type Map" provided by the user to find the correct 'categoryId' for the question type you select.
+		7.  You MUST generate relevant options based on the question type:
+			- For "multi-choice grid" and "checkbox grid", you MUST use the 'rowOptions' array for the row labels (e.g., specific statements/items) and the 'columnOptions' array for the column labels (e.g., scale points like "Strongly Disagree" to "Strongly Agree"). The 'options' array MUST be empty . 1) Maximum 4 rowOptions 2) Maximum 4 columnOptions.
+			- For "linear scale" or "rating", use the 'options' array, setting 'rangeFrom', 'rangeTo', and optionally 'fromLabel'/'toLabel'. The 'rowOptions' and 'columnOptions' arrays MUST be empty.
+			- For "multiple choice", "checkboxes", or "dropdown", use the 'options' array, adding several relevant text options. The 'rowOptions' and 'columnOptions' arrays MUST be empty.
+			- For "short answer" or "paragraph", all three option arrays ('options', 'rowOptions', 'columnOptions') MUST be empty.
+		8.  The final output MUST be a single JSON object matching the provided schema.
+    9.  Title must NOT exceed 100 characters. Question text <= 120 characters.
+    10. NEVER repeat characters or patterns like "18_18_18_18…"
+    11. NEVER include filler text or extend text unnecessarily.
+	`;
+
+    // 4. The User Content (The actual data)
+    const userQuery = `
+		Please generate a survey with the following details:
+		- Title: "${title}"
+		- Category: "${category}"
+		- Description: "${description}"
+
+		Here is the Question Type Map you MUST use for all 'categoryId' fields:
+		${JSON.stringify(questionTypeMap, null, 2)}
+	`;
+
+    // 5. Construct the API Payload
+    const payload = {
+      systemInstruction: {
+        parts: [{ text: systemPrompt }],
+      },
+      contents: [
+        {
+          parts: [{ text: userQuery }],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: surveyResponseSchema,
+      },
+    };
+
+    // 6. Make the API Call
+    const apiKey = process.env.GEMINI_API_KEY;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          `API call failed with status: ${response.status}\nBody: ${errorBody}`
+        );
+      }
+
+      const result = await response.json();
+      console.log(
+        ">>>>> the value of the RESULT is : ",
+        JSON.stringify(result)
+      );
+
+      if (
+        result.candidates &&
+        result.candidates.length > 0 &&
+        result.candidates[0].content &&
+        result.candidates[0].content.parts
+      ) {
+        const jsonText = result.candidates[0].content.parts[0].text;
+        const surveyData = JSON.parse(jsonText);
+
+        // Update the question count based on what the AI generated
+        if (surveyData.survey && surveyData.survey.questions) {
+          surveyData.survey.no_of_questions =
+            surveyData.survey.questions.length;
+        }
+
+        return surveyData?.survey?.questions;
+      } else {
+        console.error(
+          "API response was missing expected content:",
+          JSON.stringify(result, null, 2)
+        );
+        throw new Error("No valid response content from API.");
+      }
+    } catch (error) {
+      console.error("Error generating survey:", error.message);
+      return null;
+    }
+  } catch (err) {
+    console.log(
+      ">>>> the error in the generateSurveyQuestionsWithCategory function is : ",
+      err
+    );
+    return null;
+  }
+};
