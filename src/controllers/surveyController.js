@@ -1,3 +1,4 @@
+import { response } from "express";
 import prisma from "../config/db.js";
 import {
   generateSurveyQuestions,
@@ -278,7 +279,7 @@ export const getSurveys = async (req, res) => {
     const surveys = await prisma.survey.findMany({
       where: { userId: req.user.id, is_deleted: false },
       orderBy: { created_at: "desc" },
-      include: { questions: true, share_tokens: true },
+      include: { questions: true, share_tokens: true, responses: true },
     });
 
     res.json({ surveys });
