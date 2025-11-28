@@ -523,6 +523,7 @@ export const getSurveyAnalytics = async (req, res) => {
             category: true,
           },
         },
+        share_tokens: true,
       },
     });
 
@@ -563,7 +564,11 @@ export const getSurveyAnalytics = async (req, res) => {
       return requiredQIds.every((id) => answered.has(id));
     };
     const completedCount = responses.filter(isComplete).length;
-    const completionRate = Math.round(pct1(completedCount, totalResponses));
+    const shareTokensCount = survey.share_tokens.length;
+    const completionRate =
+      survey.survey_send_by === "NONE"
+        ? 100
+        : pct1(completedCount, shareTokensCount);
 
     // Average completion time (minutes) using per-response min/max submitted_at
     const perResponseTimes = responses
