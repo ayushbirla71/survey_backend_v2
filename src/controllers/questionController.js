@@ -44,9 +44,17 @@ export const createQuestionsWithOptions = async (
         }
         break;
 
-      // Linear Scale / Rating — store scale values and labels
+      // Text input types (short answer, paragraph, number)
+      case "short answer":
+      case "paragraph":
+      case "number":
+        // No options needed for text input types
+        break;
+
+      // Linear Scale / Rating / NPS — store scale values and labels
       case "linear scale":
       case "rating":
+      case "nps":
         if (options && options.length > 0 && options[0]) {
           const scale = options[0];
           optionRecords.push({
@@ -390,8 +398,15 @@ export const updateQuestion = async (req, res) => {
         }
         break;
 
+      case "short answer":
+      case "paragraph":
+      case "number":
+        // No options needed for text input types
+        break;
+
       case "linear scale":
       case "rating":
+      case "nps":
         if (options && options.length > 0 && options[0]) {
           const scale = options[0];
           optionRecords.push({
