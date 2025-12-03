@@ -11,6 +11,7 @@ import surveyResultsRoutes from "./routes/surveyResultsRoutes.js";
 // import reportRoutes from "./routes/reportRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import categoriesRoutes from "./routes/categoriesRoutes.js";
+import quotaRoutes from "./routes/quotaRoutes.js";
 import { swaggerSetup } from "./docs/swagger.js";
 
 const app = express();
@@ -29,6 +30,7 @@ app.use("/api/survey-results", surveyResultsRoutes);
 // app.use("/api/reports", reportRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/quota", quotaRoutes);
 
 // SWAGGER DOCS
 swaggerSetup(app);
