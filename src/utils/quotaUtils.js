@@ -165,3 +165,64 @@ export function formatQuotaStatus(quota, totalTarget) {
   };
 }
 
+/**
+ * Map screening question type from frontend format to DB enum
+ */
+export function mapScreeningQuestionType(type) {
+  const typeMap = {
+    age: "AGE",
+    gender: "GENDER",
+    location: "LOCATION",
+    category: "CATEGORY",
+    custom: "CUSTOM",
+  };
+  return typeMap[type.toLowerCase()] || "CUSTOM";
+}
+
+/**
+ * Format screening questions for database insertion
+ */
+export function formatScreeningQuestionsForDb(
+  screeningQuestions,
+  surveyQuotaId
+) {
+  if (!screeningQuestions || screeningQuestions.length === 0) return [];
+
+  return screeningQuestions.map((question, index) => ({
+    surveyQuotaId,
+    question_id: question.id,
+    type: mapScreeningQuestionType(question.type),
+    question_text: question.question_text,
+    required: question.required ?? true,
+    order_index: index,
+    options: {
+      create: question.options.map((option, optIndex) => ({
+        option_id: option.id,
+        label: option.label,
+        value: option.value,
+        order_index: optIndex,
+      })),
+    },
+  }));
+}
+
+/**
+ * Format screening questions for API response (match frontend format)
+ */
+export function formatScreeningQuestionsForResponse(screeningQuestions) {
+  if (!screeningQuestions || screeningQuestions.length === 0) return [];
+
+  return screeningQuestions.map((question) => ({
+    id: question.question_id,
+    type: question.type.toLowerCase(),
+    question_text: question.question_text,
+    required: question.required,
+    options: question.options
+      .sort((a, b) => a.order_index - b.order_index)
+      .map((option) => ({
+        id: option.option_id,
+        label: option.label,
+        value: option.value,
+      })),
+  }));
+}

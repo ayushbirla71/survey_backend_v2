@@ -4,6 +4,24 @@ import Joi from "joi";
  * ✅ QUOTA CONFIGURATION VALIDATIONS
  */
 
+// Screening Question Option Schema
+const screeningQuestionOptionSchema = Joi.object({
+  id: Joi.string().required(),
+  label: Joi.string().required(),
+  value: Joi.string().required(), // Can be simple value or JSON string for location
+});
+
+// Screening Question Schema
+const screeningQuestionSchema = Joi.object({
+  id: Joi.string().required(),
+  type: Joi.string()
+    .valid("age", "gender", "location", "category", "custom")
+    .required(),
+  question_text: Joi.string().required(),
+  options: Joi.array().items(screeningQuestionOptionSchema).min(1).required(),
+  required: Joi.boolean().default(true),
+});
+
 // Age Quota Schema
 const ageQuotaSchema = Joi.object({
   min_age: Joi.number().integer().min(0).max(120).required(),
@@ -86,6 +104,7 @@ export const quotaConfigValidation = Joi.object({
   gender_quotas: Joi.array().items(genderQuotaSchema).optional(),
   location_quotas: Joi.array().items(locationQuotaSchema).optional(),
   category_quotas: Joi.array().items(categoryQuotaSchema).optional(),
+  screening_questions: Joi.array().items(screeningQuestionSchema).optional(),
 });
 
 // Update Quota Configuration Schema (all fields optional)
@@ -100,6 +119,7 @@ export const updateQuotaConfigValidation = Joi.object({
   gender_quotas: Joi.array().items(genderQuotaSchema).optional(),
   location_quotas: Joi.array().items(locationQuotaSchema).optional(),
   category_quotas: Joi.array().items(categoryQuotaSchema).optional(),
+  screening_questions: Joi.array().items(screeningQuestionSchema).optional(),
 });
 
 // Check Respondent Validation
@@ -126,4 +146,3 @@ export const terminateRespondentValidation = Joi.object({
   respondent_id: Joi.string().uuid().required(),
   reason: Joi.string().optional(),
 });
-

@@ -348,6 +348,7 @@ model SurveyQuota {
   location_quotas   LocationQuota[]
   category_quotas   CategoryQuota[]
   respondents       QuotaRespondent[]
+  screening_questions ScreeningQuestion[]
 }
 
 model AgeQuota {
@@ -453,6 +454,56 @@ model QuotaRespondent {
 
   @@index([surveyQuotaId, status])
   @@index([vendor_respondent_id])
+}
+
+//////////////////////////////
+// SCREENING QUESTIONS
+//////////////////////////////
+enum ScreeningQuestionType {
+  AGE
+  GENDER
+  LOCATION
+  CATEGORY
+  CUSTOM
+}
+
+model ScreeningQuestion {
+  id                String                  @id @default(uuid())
+  surveyQuotaId     String
+  surveyQuota       SurveyQuota             @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+
+  question_id       String                  // Frontend-provided ID like "screening_age"
+  type              ScreeningQuestionType
+  question_text     String
+  required          Boolean                 @default(true)
+  order_index       Int                     @default(0)
+
+  is_active         Boolean                 @default(true)
+  created_at        DateTime                @default(now())
+  updated_at        DateTime                @updatedAt
+
+  options           ScreeningQuestionOption[]
+
+  @@unique([surveyQuotaId, question_id])
+  @@index([surveyQuotaId, type])
+}
+
+model ScreeningQuestionOption {
+  id                    String            @id @default(uuid())
+  screeningQuestionId   String
+  screeningQuestion     ScreeningQuestion @relation(fields: [screeningQuestionId], references: [id], onDelete: Cascade)
+
+  option_id             String            // Frontend-provided ID like "age_option_0"
+  label                 String
+  value                 String            // Can be simple value or JSON for location
+
+  order_index           Int               @default(0)
+  is_active             Boolean           @default(true)
+
+  created_at            DateTime          @default(now())
+  updated_at            DateTime          @updatedAt
+
+  @@unique([screeningQuestionId, option_id])
 }
 
 

@@ -4,7 +4,8 @@ import {
   processCallbackUrl,
   callVendorCallback,
   formatQuotaStatus,
-  getQuotaTarget,
+  mapScreeningQuestionType,
+  formatScreeningQuestionsForResponse,
 } from "../utils/quotaUtils.js";
 
 /**
@@ -24,6 +25,7 @@ export const createQuotaConfig = async (req, res) => {
       gender_quotas,
       location_quotas,
       category_quotas,
+      screening_questions,
     } = req.body;
 
     // Check if survey exists and belongs to user
@@ -132,6 +134,31 @@ export const createQuotaConfig = async (req, res) => {
         });
       }
 
+      // Create screening questions with options
+      if (screening_questions && screening_questions.length > 0) {
+        for (let i = 0; i < screening_questions.length; i++) {
+          const question = screening_questions[i];
+          await tx.screeningQuestion.create({
+            data: {
+              surveyQuotaId: surveyQuota.id,
+              question_id: question.id,
+              type: mapScreeningQuestionType(question.type),
+              question_text: question.question_text,
+              required: question.required ?? true,
+              order_index: i,
+              options: {
+                create: question.options.map((opt, optIndex) => ({
+                  option_id: opt.id,
+                  label: opt.label,
+                  value: opt.value,
+                  order_index: optIndex,
+                })),
+              },
+            },
+          });
+        }
+      }
+
       return surveyQuota;
     });
 
@@ -143,12 +170,24 @@ export const createQuotaConfig = async (req, res) => {
         gender_quotas: true,
         location_quotas: true,
         category_quotas: { include: { surveyCategory: true } },
+        screening_questions: {
+          include: { options: true },
+          orderBy: { order_index: "asc" },
+        },
       },
     });
 
+    // Format screening questions to match frontend format
+    const formattedQuota = {
+      ...completeQuota,
+      screening_questions: formatScreeningQuestionsForResponse(
+        completeQuota.screening_questions
+      ),
+    };
+
     res.status(201).json({
       message: "Quota configuration created successfully",
-      quota: completeQuota,
+      quota: formattedQuota,
     });
   } catch (error) {
     console.error("Create quota error:", error);
@@ -172,6 +211,10 @@ export const getQuotaConfig = async (req, res) => {
         gender_quotas: true,
         location_quotas: true,
         category_quotas: { include: { surveyCategory: true } },
+        screening_questions: {
+          include: { options: true },
+          orderBy: { order_index: "asc" },
+        },
       },
     });
 
@@ -179,7 +222,15 @@ export const getQuotaConfig = async (req, res) => {
       return res.status(404).json({ message: "Quota configuration not found" });
     }
 
-    res.json({ quota });
+    // Format screening questions to match frontend format
+    const formattedQuota = {
+      ...quota,
+      screening_questions: formatScreeningQuestionsForResponse(
+        quota.screening_questions
+      ),
+    };
+
+    res.json(formattedQuota);
   } catch (error) {
     console.error("Get quota error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -204,6 +255,7 @@ export const updateQuotaConfig = async (req, res) => {
       gender_quotas,
       location_quotas,
       category_quotas,
+      screening_questions,
     } = req.body;
 
     // Check if survey exists and belongs to user
@@ -217,12 +269,151 @@ export const updateQuotaConfig = async (req, res) => {
         .json({ message: "Survey not found or access denied" });
     }
 
-    const existingQuota = await prisma.surveyQuota.findUnique({
+    const existingQuota = await prisma.surveyQuota.findFirst({
       where: { surveyId },
     });
 
     if (!existingQuota) {
-      return res.status(404).json({ message: "Quota configuration not found" });
+      // return res.status(404).json({ message: "Quota configuration not found" });
+      // Validate quota configuration
+      const validation = validateQuotaConfiguration({
+        total_target,
+        age_quotas,
+        gender_quotas,
+        location_quotas,
+        category_quotas,
+      });
+
+      if (!validation.isValid) {
+        return res.status(400).json({
+          message: "Quota validation failed",
+          errors: validation.errors,
+        });
+      }
+
+      // Create quota with nested relations using transaction
+      const quota = await prisma.$transaction(async (tx) => {
+        const surveyQuota = await tx.surveyQuota.create({
+          data: {
+            surveyId,
+            total_target,
+            completed_url,
+            terminated_url,
+            quota_full_url,
+          },
+        });
+
+        // Create age quotas
+        if (age_quotas && age_quotas.length > 0) {
+          await tx.ageQuota.createMany({
+            data: age_quotas.map((q) => ({
+              surveyQuotaId: surveyQuota.id,
+              min_age: q.min_age,
+              max_age: q.max_age,
+              quota_type: q.quota_type || "COUNT",
+              target_count: q.target_count,
+              target_percentage: q.target_percentage,
+            })),
+          });
+        }
+
+        // Create gender quotas
+        if (gender_quotas && gender_quotas.length > 0) {
+          await tx.genderQuota.createMany({
+            data: gender_quotas.map((q) => ({
+              surveyQuotaId: surveyQuota.id,
+              gender: q.gender,
+              quota_type: q.quota_type || "COUNT",
+              target_count: q.target_count,
+              target_percentage: q.target_percentage,
+            })),
+          });
+        }
+
+        // Create location quotas
+        if (location_quotas && location_quotas.length > 0) {
+          await tx.locationQuota.createMany({
+            data: location_quotas.map((q) => ({
+              surveyQuotaId: surveyQuota.id,
+              country: q.country,
+              state: q.state,
+              city: q.city,
+              postal_code: q.postal_code,
+              quota_type: q.quota_type || "COUNT",
+              target_count: q.target_count,
+              target_percentage: q.target_percentage,
+            })),
+          });
+        }
+
+        // Create category quotas
+        if (category_quotas && category_quotas.length > 0) {
+          await tx.categoryQuota.createMany({
+            data: category_quotas.map((q) => ({
+              surveyQuotaId: surveyQuota.id,
+              surveyCategoryId: q.surveyCategoryId,
+              quota_type: q.quota_type || "COUNT",
+              target_count: q.target_count,
+              target_percentage: q.target_percentage,
+            })),
+          });
+        }
+
+        // Create screening questions with options
+        if (screening_questions && screening_questions.length > 0) {
+          for (let i = 0; i < screening_questions.length; i++) {
+            const question = screening_questions[i];
+            await tx.screeningQuestion.create({
+              data: {
+                surveyQuotaId: surveyQuota.id,
+                question_id: question.id,
+                type: mapScreeningQuestionType(question.type),
+                question_text: question.question_text,
+                required: question.required ?? true,
+                order_index: i,
+                options: {
+                  create: question.options.map((opt, optIndex) => ({
+                    option_id: opt.id,
+                    label: opt.label,
+                    value: opt.value,
+                    order_index: optIndex,
+                  })),
+                },
+              },
+            });
+          }
+        }
+
+        return surveyQuota;
+      });
+
+      // Fetch complete quota with relations
+      const completeQuota = await prisma.surveyQuota.findUnique({
+        where: { id: quota.id },
+        include: {
+          age_quotas: true,
+          gender_quotas: true,
+          location_quotas: true,
+          category_quotas: { include: { surveyCategory: true } },
+          screening_questions: {
+            include: { options: true },
+            orderBy: { order_index: "asc" },
+          },
+        },
+      });
+
+      // Format screening questions to match frontend format
+      const formattedQuota = {
+        ...completeQuota,
+        screening_questions: formatScreeningQuestionsForResponse(
+          completeQuota.screening_questions
+        ),
+      };
+
+      return res.status(201).json({
+        message: "Quota configuration created successfully",
+        quota: formattedQuota,
+      });
     }
 
     // Update using transaction
@@ -315,6 +506,38 @@ export const updateQuotaConfig = async (req, res) => {
         }
       }
 
+      // Update screening questions if provided
+      if (screening_questions) {
+        // Delete existing screening questions (cascades to options)
+        await tx.screeningQuestion.deleteMany({
+          where: { surveyQuotaId: existingQuota.id },
+        });
+        // Create new screening questions with options
+        if (screening_questions.length > 0) {
+          for (let i = 0; i < screening_questions.length; i++) {
+            const question = screening_questions[i];
+            await tx.screeningQuestion.create({
+              data: {
+                surveyQuotaId: existingQuota.id,
+                question_id: question.id,
+                type: mapScreeningQuestionType(question.type),
+                question_text: question.question_text,
+                required: question.required ?? true,
+                order_index: i,
+                options: {
+                  create: question.options.map((opt, optIndex) => ({
+                    option_id: opt.id,
+                    label: opt.label,
+                    value: opt.value,
+                    order_index: optIndex,
+                  })),
+                },
+              },
+            });
+          }
+        }
+      }
+
       return tx.surveyQuota.findUnique({
         where: { id: existingQuota.id },
         include: {
@@ -322,13 +545,25 @@ export const updateQuotaConfig = async (req, res) => {
           gender_quotas: true,
           location_quotas: true,
           category_quotas: { include: { surveyCategory: true } },
+          screening_questions: {
+            include: { options: true },
+            orderBy: { order_index: "asc" },
+          },
         },
       });
     });
 
+    // Format screening questions to match frontend format
+    const formattedQuota = {
+      ...updatedQuota,
+      screening_questions: formatScreeningQuestionsForResponse(
+        updatedQuota.screening_questions
+      ),
+    };
+
     res.json({
       message: "Quota configuration updated successfully",
-      quota: updatedQuota,
+      quota: formattedQuota,
     });
   } catch (error) {
     console.error("Update quota error:", error);
@@ -388,6 +623,10 @@ export const getQuotaStatus = async (req, res) => {
         gender_quotas: true,
         location_quotas: true,
         category_quotas: { include: { surveyCategory: true } },
+        screening_questions: {
+          include: { options: true },
+          orderBy: { order_index: "asc" },
+        },
       },
     });
 
@@ -422,6 +661,9 @@ export const getQuotaStatus = async (req, res) => {
         ...q,
         ...formatQuotaStatus(q, quota.total_target),
       })),
+      screening_questions: formatScreeningQuestionsForResponse(
+        quota.screening_questions
+      ),
     };
 
     res.json({ status });
@@ -449,13 +691,14 @@ export const checkRespondentQuota = async (req, res) => {
       surveyCategoryId,
     } = req.body;
 
+    // Fetch quota with all related data in single query
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
       include: {
-        age_quotas: true,
-        gender_quotas: true,
-        location_quotas: true,
-        category_quotas: true,
+        age_quotas: { where: { is_active: true } },
+        gender_quotas: { where: { is_active: true } },
+        location_quotas: { where: { is_active: true } },
+        category_quotas: { where: { is_active: true } },
       },
     });
 
@@ -463,158 +706,196 @@ export const checkRespondentQuota = async (req, res) => {
       return res.status(404).json({ message: "Quota configuration not found" });
     }
 
-    if (!quota.is_active) {
-      return res.status(400).json({
-        qualified: false,
-        status: "QUOTA_FULL",
-        message: "Survey quota is not active",
-        redirect_url: quota.quota_full_url,
-      });
-    }
+    // Common respondent data for creating records
+    const respondentData = {
+      surveyQuotaId: quota.id,
+      vendor_respondent_id,
+      age,
+      gender,
+      country,
+      state,
+      city,
+      surveyCategoryId,
+    };
 
-    // Check if total quota is full
-    if (quota.total_completed >= quota.total_target) {
+    // Helper: Save respondent and update quota counts, then return response
+    const saveAndRespond = async (status, message, quotaType = null) => {
+      const isQuotaFull = status === "QUOTA_FULL";
+      const isTerminated = status === "TERMINATED";
+
+      const redirectUrlForDB = isQuotaFull
+        ? quota.quota_full_url
+        : isTerminated
+        ? quota.terminated_url
+        : null;
+
+      const redirectUpdateFields = redirectUrlForDB
+        ? {
+            redirect_url_called: redirectUrlForDB,
+            redirect_called_at: new Date(),
+          }
+        : {};
+
+      // Use transaction to ensure atomicity
+      const respondent = await prisma.$transaction(async (tx) => {
+        // Create respondent record
+        const newRespondent = await tx.quotaRespondent.create({
+          data: { ...respondentData, status, ...redirectUpdateFields },
+        });
+
+        // Update quota counts based on status
+        if (isQuotaFull) {
+          await tx.surveyQuota.update({
+            where: { id: quota.id },
+            data: { total_quota_full: { increment: 1 } },
+          });
+        } else if (isTerminated) {
+          await tx.surveyQuota.update({
+            where: { id: quota.id },
+            data: { total_terminated: { increment: 1 } },
+          });
+        }
+
+        // Here i also have to add the code for calling the vendor callback URL (this one need to be checked)
+        // if (redirectUrlForDB) {
+        //   const callbackResult = await callVendorCallback(redirectUrlForDB);
+        //   await tx.quotaRespondent.update({
+        //     where: { id: newRespondent.id },
+        //     data: { callback_result: JSON.stringify(callbackResult) },
+        //   });
+        // } else {
+        //   await tx.quotaRespondent.update({
+        //     where: { id: newRespondent.id },
+        //     data: { callback_result: JSON.stringify({ success: false }) },
+        //   });
+        // }
+
+        return newRespondent;
+      });
+
+      const redirectUrl = isQuotaFull
+        ? quota.quota_full_url
+        : quota.terminated_url;
+
       return res.status(200).json({
         qualified: false,
-        status: "QUOTA_FULL",
-        message: "Total survey quota is full",
-        redirect_url: quota.quota_full_url,
+        status,
+        message,
+        redirect_url: redirectUrl,
+        respondent_id: respondent.id,
+        quota_type: quotaType,
       });
+    };
+
+    // Helper: Calculate target count from percentage
+    const getTarget = (q) =>
+      q.target_count ??
+      Math.ceil((q.target_percentage / 100) * quota.total_target);
+
+    // ---------------- CHECK: Survey inactive ----------------
+    if (!quota.is_active) {
+      return saveAndRespond("QUOTA_FULL", "Survey quota is not active");
     }
 
-    // Check each quota type
-    const quotaChecks = [];
+    // ---------------- CHECK: Total quota full ----------------
+    if (quota.total_completed >= quota.total_target) {
+      return saveAndRespond("QUOTA_FULL", "Total survey quota is full");
+    }
 
-    // Check age quota
-    if (age && quota.age_quotas.length > 0) {
-      const matchingAgeQuota = quota.age_quotas.find(
-        (q) => q.is_active && age >= q.min_age && age <= q.max_age
+    // ---------------- CHECK: Age ----------------
+    if (age !== undefined && quota.age_quotas.length > 0) {
+      const match = quota.age_quotas.find(
+        (q) => age >= q.min_age && age <= q.max_age
       );
-      if (matchingAgeQuota) {
-        const target = getQuotaTarget(matchingAgeQuota, quota.total_target);
-        if (matchingAgeQuota.current_count >= target) {
-          quotaChecks.push({
-            type: "age",
-            full: true,
-            quota: matchingAgeQuota,
-          });
-        } else {
-          quotaChecks.push({
-            type: "age",
-            full: false,
-            quota: matchingAgeQuota,
-          });
-        }
+
+      if (!match) {
+        return saveAndRespond(
+          "TERMINATED",
+          "Age does not match any allowed quota range",
+          "AGE"
+        );
+      }
+
+      if (match.current_count >= getTarget(match)) {
+        return saveAndRespond("QUOTA_FULL", "Age quota is full", "AGE");
       }
     }
 
-    // Check gender quota
+    // ---------------- CHECK: Gender ----------------
     if (gender && quota.gender_quotas.length > 0) {
-      const matchingGenderQuota = quota.gender_quotas.find(
-        (q) => q.is_active && q.gender === gender
-      );
-      if (matchingGenderQuota) {
-        const target = getQuotaTarget(matchingGenderQuota, quota.total_target);
-        if (matchingGenderQuota.current_count >= target) {
-          quotaChecks.push({
-            type: "gender",
-            full: true,
-            quota: matchingGenderQuota,
-          });
-        } else {
-          quotaChecks.push({
-            type: "gender",
-            full: false,
-            quota: matchingGenderQuota,
-          });
-        }
+      const match = quota.gender_quotas.find((q) => q.gender === gender);
+
+      if (!match) {
+        return saveAndRespond(
+          "TERMINATED",
+          "Gender does not match any allowed quota",
+          "GENDER"
+        );
+      }
+
+      if (match.current_count >= getTarget(match)) {
+        return saveAndRespond("QUOTA_FULL", "Gender quota is full", "GENDER");
       }
     }
 
-    // Check location quota
-    if ((country || state || city) && quota.location_quotas.length > 0) {
-      const matchingLocationQuota = quota.location_quotas.find((q) => {
-        if (!q.is_active) return false;
-        if (q.country && q.country !== country) return false;
-        if (q.state && q.state !== state) return false;
-        if (q.city && q.city !== city) return false;
+    // ---------------- CHECK: Location ----------------
+    if (quota.location_quotas.length > 0) {
+      const match = quota.location_quotas.find((q) => {
+        if (q.country && q.country.toLowerCase() !== country?.toLowerCase())
+          return false;
+        if (q.state && q.state.toLowerCase() !== state?.toLowerCase())
+          return false;
+        if (q.city && q.city.toLowerCase() !== city?.toLowerCase())
+          return false;
         return true;
       });
-      if (matchingLocationQuota) {
-        const target = getQuotaTarget(
-          matchingLocationQuota,
-          quota.total_target
+
+      if (!match) {
+        return saveAndRespond(
+          "TERMINATED",
+          "Location does not match any allowed quota",
+          "LOCATION"
         );
-        if (matchingLocationQuota.current_count >= target) {
-          quotaChecks.push({
-            type: "location",
-            full: true,
-            quota: matchingLocationQuota,
-          });
-        } else {
-          quotaChecks.push({
-            type: "location",
-            full: false,
-            quota: matchingLocationQuota,
-          });
-        }
+      }
+
+      if (match.current_count >= getTarget(match)) {
+        return saveAndRespond(
+          "QUOTA_FULL",
+          "Location quota is full",
+          "LOCATION"
+        );
       }
     }
 
-    // Check category quota
+    // ---------------- CHECK: Category ----------------
     if (surveyCategoryId && quota.category_quotas.length > 0) {
-      const matchingCategoryQuota = quota.category_quotas.find(
-        (q) => q.is_active && q.surveyCategoryId === surveyCategoryId
+      const match = quota.category_quotas.find(
+        (q) => q.surveyCategoryId === surveyCategoryId
       );
-      if (matchingCategoryQuota) {
-        const target = getQuotaTarget(
-          matchingCategoryQuota,
-          quota.total_target
+
+      if (!match) {
+        return saveAndRespond(
+          "TERMINATED",
+          "Category does not match any allowed quota",
+          "CATEGORY"
         );
-        if (matchingCategoryQuota.current_count >= target) {
-          quotaChecks.push({
-            type: "category",
-            full: true,
-            quota: matchingCategoryQuota,
-          });
-        } else {
-          quotaChecks.push({
-            type: "category",
-            full: false,
-            quota: matchingCategoryQuota,
-          });
-        }
+      }
+
+      if (match.current_count >= getTarget(match)) {
+        return saveAndRespond(
+          "QUOTA_FULL",
+          "Category quota is full",
+          "CATEGORY"
+        );
       }
     }
 
-    // If any quota is full, respondent doesn't qualify
-    const fullQuotas = quotaChecks.filter((c) => c.full);
-    if (fullQuotas.length > 0) {
-      return res.status(200).json({
-        qualified: false,
-        status: "QUOTA_FULL",
-        message: `Quota full for: ${fullQuotas.map((q) => q.type).join(", ")}`,
-        redirect_url: quota.quota_full_url,
-        full_quotas: fullQuotas.map((q) => q.type),
-      });
-    }
-
-    // Create respondent record
+    // ---------------- QUALIFIED ----------------
     const respondent = await prisma.quotaRespondent.create({
-      data: {
-        surveyQuotaId: quota.id,
-        vendor_respondent_id,
-        age,
-        gender,
-        country,
-        state,
-        city,
-        surveyCategoryId,
-        status: "QUALIFIED",
-      },
+      data: { ...respondentData, status: "QUALIFIED" },
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       qualified: true,
       status: "QUALIFIED",
       message: "Respondent qualifies for survey",
@@ -623,9 +904,288 @@ export const checkRespondentQuota = async (req, res) => {
     });
   } catch (error) {
     console.error("Check respondent quota error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
+
+// export const checkRespondentQuota = async (req, res) => {
+//   try {
+//     console.log(
+//       ">>>>>>> Entered the CHECK RESPONDENT QUOTA FUNCTION.........."
+//     );
+
+//     const { surveyId } = req.params;
+//     const {
+//       vendor_respondent_id,
+//       age,
+//       gender,
+//       country,
+//       state,
+//       city,
+//       surveyCategoryId,
+//     } = req.body;
+
+//     console.log(">>>>>>> the value of the REQUEST BODY is : ", req.body);
+
+//     const quota = await prisma.surveyQuota.findUnique({
+//       where: { surveyId },
+//       include: {
+//         age_quotas: true,
+//         gender_quotas: true,
+//         location_quotas: true,
+//         category_quotas: true,
+//       },
+//     });
+//     console.log(">>>>>>> the value of the QUOTA is : ", quota);
+
+//     if (!quota) {
+//       return res.status(404).json({ message: "Quota configuration not found" });
+//     }
+
+//     if (!quota.is_active) {
+//       return res.status(400).json({
+//         qualified: false,
+//         status: "QUOTA_FULL",
+//         message: "Survey quota is not active",
+//         redirect_url: quota.quota_full_url,
+//       });
+//     }
+
+//     // Check if total quota is full
+//     if (quota.total_completed >= quota.total_target) {
+//       await prisma.quotaRespondent.create({
+//         data: {
+//           surveyQuotaId: quota.id,
+//           vendor_respondent_id,
+//           age,
+//           gender,
+//           country,
+//           state,
+//           city,
+//           surveyCategoryId,
+//           status: "QUOTA_FULL",
+//         },
+//       });
+
+//       return res.status(200).json({
+//         qualified: false,
+//         status: "QUOTA_FULL",
+//         message: "Total survey quota is full",
+//         redirect_url: quota.quota_full_url,
+//       });
+//     }
+
+//     // Check each quota type
+//     const quotaChecks = [];
+
+//     // Check age quota
+//     if (age && quota.age_quotas.length > 0) {
+//       console.log(">>>>>>> Checking Age Quota...........");
+//       console.log(">>>>>>> The value of the AGE is : ", age);
+//       console.log(">>>>>>> The value of the QUOTA AGE is : ", quota.age_quotas);
+//       const matchingAgeQuota = quota.age_quotas.find(
+//         (q) => q.is_active && age >= q.min_age && age <= q.max_age
+//       );
+//       console.log(
+//         ">>>>>>> The value of the MATCHING AGE QUOTA is : ",
+//         matchingAgeQuota
+//       );
+//       if (!matchingAgeQuota) {
+//         await prisma.quotaRespondent.create({
+//           data: {
+//             surveyQuotaId: quota.id,
+//             vendor_respondent_id,
+//             age,
+//             gender,
+//             country,
+//             state,
+//             city,
+//             surveyCategoryId,
+//             status: "TERMINATED",
+//           },
+//         });
+
+//         return res.status(200).json({
+//           qualified: false,
+//           status: "TERMINATED",
+//           message: "Age does not match any allowed quota range",
+//           redirect_url: quota.terminated_url,
+//         });
+//       }
+
+//       const target = getQuotaTarget(matchingAgeQuota, quota.total_target);
+//       quotaChecks.push({
+//         type: "age",
+//         full: matchingAgeQuota.current_count >= target,
+//         quota: matchingAgeQuota,
+//       });
+//     }
+
+//     // Check gender quota
+//     if (gender && quota.gender_quotas.length > 0) {
+//       const matchingGenderQuota = quota.gender_quotas.find(
+//         (q) => q.is_active && q.gender === gender
+//       );
+//       if (!matchingGenderQuota) {
+//         await prisma.quotaRespondent.create({
+//           data: {
+//             surveyQuotaId: quota.id,
+//             vendor_respondent_id,
+//             age,
+//             gender,
+//             country,
+//             state,
+//             city,
+//             surveyCategoryId,
+//             status: "TERMINATED",
+//           },
+//         });
+
+//         return res.status(200).json({
+//           qualified: false,
+//           status: "TERMINATED",
+//           message: "Gender does not match any allowed quota",
+//           redirect_url: quota.terminated_url,
+//         });
+//       }
+
+//       const target = getQuotaTarget(matchingGenderQuota, quota.total_target);
+//       quotaChecks.push({
+//         type: "gender",
+//         full: matchingGenderQuota.current_count >= target,
+//         quota: matchingGenderQuota,
+//       });
+//     }
+
+//     // Check location quota
+//     if ((country || state || city) && quota.location_quotas.length > 0) {
+//       const matchingLocationQuota = quota.location_quotas.find((q) => {
+//         if (!q.is_active) return false;
+//         if (q.country && q.country !== country) return false;
+//         if (q.state && q.state !== state) return false;
+//         if (q.city && q.city !== city) return false;
+//         return true;
+//       });
+//       if (!matchingLocationQuota) {
+//         await prisma.quotaRespondent.create({
+//           data: {
+//             surveyQuotaId: quota.id,
+//             vendor_respondent_id,
+//             age,
+//             gender,
+//             country,
+//             state,
+//             city,
+//             surveyCategoryId,
+//             status: "TERMINATED",
+//           },
+//         });
+
+//         return res.status(200).json({
+//           qualified: false,
+//           status: "TERMINATED",
+//           message: "Location does not match any allowed quota",
+//           redirect_url: quota.terminated_url,
+//         });
+//       }
+
+//       const target = getQuotaTarget(matchingLocationQuota, quota.total_target);
+//       quotaChecks.push({
+//         type: "location",
+//         full: matchingLocationQuota.current_count >= target,
+//       });
+//     }
+
+//     // Check category quota
+//     if (surveyCategoryId && quota.category_quotas.length > 0) {
+//       const matchingCategoryQuota = quota.category_quotas.find(
+//         (q) => q.is_active && q.surveyCategoryId === surveyCategoryId
+//       );
+//       if (!matchingCategoryQuota) {
+//         await prisma.quotaRespondent.create({
+//           data: {
+//             surveyQuotaId: quota.id,
+//             vendor_respondent_id,
+//             age,
+//             gender,
+//             country,
+//             state,
+//             city,
+//             surveyCategoryId,
+//             status: "TERMINATED",
+//           },
+//         });
+
+//         return res.status(200).json({
+//           qualified: false,
+//           status: "TERMINATED",
+//           message: "Category does not match any allowed quota",
+//           redirect_url: quota.terminated_url,
+//         });
+//       }
+
+//       const target = getQuotaTarget(matchingCategoryQuota, quota.total_target);
+//       quotaChecks.push({
+//         type: "category",
+//         full: matchingCategoryQuota.current_count >= target,
+//       });
+//     }
+
+//     // If any quota is full, respondent doesn't qualify
+//     const fullQuotas = quotaChecks.filter((c) => c.full);
+//     if (fullQuotas.length > 0) {
+//       await prisma.quotaRespondent.create({
+//         data: {
+//           surveyQuotaId: quota.id,
+//           vendor_respondent_id,
+//           age,
+//           gender,
+//           country,
+//           state,
+//           city,
+//           surveyCategoryId,
+//           status: "DISQUALIFIED",
+//         },
+//       });
+
+//       return res.status(200).json({
+//         qualified: false,
+//         status: "QUOTA_FULL",
+//         message: `Quota full for: ${fullQuotas.map((q) => q.type).join(", ")}`,
+//         redirect_url: quota.quota_full_url,
+//         full_quotas: fullQuotas.map((q) => q.type),
+//       });
+//     }
+
+//     // Create respondent record
+//     const respondent = await prisma.quotaRespondent.create({
+//       data: {
+//         surveyQuotaId: quota.id,
+//         vendor_respondent_id,
+//         age,
+//         gender,
+//         country,
+//         state,
+//         city,
+//         surveyCategoryId,
+//         status: "QUALIFIED",
+//       },
+//     });
+
+//     res.status(200).json({
+//       qualified: true,
+//       status: "QUALIFIED",
+//       message: "Respondent qualifies for survey",
+//       respondent_id: respondent.id,
+//       survey_id: surveyId,
+//     });
+//   } catch (error) {
+//     console.error("Check respondent quota error:", error);
+//     res.status(500).json({ message: "Server error", error: error.message });
+//   }
+// };
 
 /**
  * @desc Mark respondent as completed
