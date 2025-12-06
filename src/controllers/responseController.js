@@ -200,6 +200,8 @@ export const submitResponseWithToken = async (req, res) => {
     if (shareToken.used)
       return res.status(400).json({ message: "Token already used." });
 
+    res.status(201).json({ message: "Response submitted" });
+
     const response = await createSurveyResponse(
       shareToken.surveyId,
       user_metadata,
@@ -212,8 +214,6 @@ export const submitResponseWithToken = async (req, res) => {
       shareToken.agentUserUniqueId
     )
       await markTokenUsed(token);
-
-    res.status(201).json({ message: "Response submitted", response });
   } catch (error) {
     console.error("Submit Response With Token Error:", error);
     res.status(500).json({ message: "Server error" });
