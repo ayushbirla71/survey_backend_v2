@@ -82,14 +82,14 @@ export const createQuestionValidation = Joi.object({
 });
 
 export const updateQuestionValidation = Joi.object({
-  // question_type: Joi.string()
-  //   .valid("TEXT", "MCQ", "RATING", "IMAGE", "VIDEO", "AUDIO", "FILE", "MATRIX")
-  //   .optional(),
+  question_type: Joi.string()
+    .valid("TEXT", "MCQ", "RATING", "IMAGE", "VIDEO", "AUDIO", "FILE", "MATRIX")
+    .optional(),
   question_text: Joi.string().min(1).max(500).optional(),
   options: Joi.array().optional(),
   rowOptions: Joi.array().optional(),
   columnOptions: Joi.array().optional(),
-  mediaId: Joi.string().uuid().optional(),
+  mediaId: Joi.string().uuid().allow(null).optional(),
   categoryId: Joi.string().uuid().optional(),
   // subCategoryId: Joi.string().uuid().optional(),
   order_index: Joi.number().integer().optional(),
