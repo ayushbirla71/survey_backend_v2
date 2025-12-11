@@ -1,5 +1,5 @@
 import prisma from "../config/db.js";
-import { uploadToS3 } from "../utils/uploadToS3.js";
+import { generatePresignedUrl, uploadToS3 } from "../utils/uploadToS3.js";
 
 const detectQuestionTypeFromFile = (file) => {
   console.log(">>>>> the  value of the FILE is : ", file);
@@ -16,7 +16,9 @@ export const uploadMedia = async (req, res) => {
     console.log(">>>>> the value of the FILE is : ", file);
     if (!file) return res.status(400).json({ message: "No file provided" });
 
-    const fileUrl = await uploadToS3(file, "survey96/survey_media");
+    // for public access collection
+    // const fileUrl = await uploadToS3(file, "survey96/survey_media");
+    const fileUrl = await uploadToS3(file, "survey_media");
     console.log(">>>>> the value of the FILE URL is : ", fileUrl);
 
     const meta = { ...file };
@@ -30,7 +32,11 @@ export const uploadMedia = async (req, res) => {
         meta,
       },
     });
-    console.log(">>>>> the value of the MEDIA is : ", media);
+
+    media.url = await generatePresignedUrl(
+      process.env.AWS_BUCKET_NAME,
+      media.url
+    );
 
     res.json({ message: "Media uploaded", media });
   } catch (error) {

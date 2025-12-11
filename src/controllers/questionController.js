@@ -1,4 +1,5 @@
 import prisma from "../config/db.js";
+import { generatePresignedUrl } from "../utils/uploadToS3.js";
 
 export const createQuestionsWithOptions = async (
   questionData,
@@ -138,6 +139,35 @@ export const createQuestionsWithOptions = async (
   }
 };
 
+const signMedia = async (mediaAsset) => {
+  if (!mediaAsset) return null;
+
+  mediaAsset.url = await generatePresignedUrl(
+    process.env.AWS_BUCKET_NAME,
+    mediaAsset.url
+  );
+
+  return mediaAsset;
+};
+
+const signQuestion = async (q) => {
+  if (!q) return q;
+
+  if (q.mediaAsset) await signMedia(q.mediaAsset);
+
+  for (const opt of q.options || []) {
+    if (opt.mediaAsset) await signMedia(opt.mediaAsset);
+  }
+  for (const row of q.rowOptions || []) {
+    if (row.mediaAsset) await signMedia(row.mediaAsset);
+  }
+  for (const col of q.columnOptions || []) {
+    if (col.mediaAsset) await signMedia(col.mediaAsset);
+  }
+
+  return q;
+};
+
 /**
  * Create Question
  */
@@ -183,13 +213,49 @@ export const createQuestion = async (req, res) => {
     const questionWithOptions = await prisma.question.findUnique({
       where: { id: question.id },
       include: {
-        options: true,
-        rowOptions: true,
-        columnOptions: true,
+        options: { include: { mediaAsset: true } },
+        rowOptions: { include: { mediaAsset: true } },
+        columnOptions: { include: { mediaAsset: true } },
         mediaAsset: true,
         category: true,
       },
     });
+
+    // Same helper as before
+    const attachPresignedUrl = async (mediaAsset) => {
+      if (!mediaAsset) return null;
+      mediaAsset.url = await generatePresignedUrl(
+        process.env.AWS_BUCKET_NAME,
+        mediaAsset.url
+      );
+      return mediaAsset;
+    };
+
+    // Sign question-level media
+    if (questionWithOptions.mediaAsset) {
+      await attachPresignedUrl(questionWithOptions.mediaAsset);
+    }
+
+    // Sign options
+    for (const opt of questionWithOptions.options) {
+      if (opt.mediaAsset) {
+        await attachPresignedUrl(opt.mediaAsset);
+      }
+    }
+
+    // Sign row options
+    for (const row of questionWithOptions.rowOptions) {
+      if (row.mediaAsset) {
+        await attachPresignedUrl(row.mediaAsset);
+      }
+    }
+
+    // Sign column options
+    for (const col of questionWithOptions.columnOptions) {
+      if (col.mediaAsset) {
+        await attachPresignedUrl(col.mediaAsset);
+      }
+    }
 
     res.status(201).json({
       message: "Question created successfully",
@@ -225,6 +291,42 @@ export const getQuestionsBySurvey = async (req, res) => {
         category: true,
       },
     });
+
+    // Same helper as before
+    const attachPresignedUrl = async (mediaAsset) => {
+      if (!mediaAsset) return null;
+      mediaAsset.url = await generatePresignedUrl(
+        process.env.AWS_BUCKET_NAME,
+        mediaAsset.url
+      );
+      return mediaAsset;
+    };
+
+    // Sign question-level media
+    if (questions.mediaAsset) {
+      await attachPresignedUrl(questions.mediaAsset);
+    }
+
+    // Sign options
+    for (const opt of questions.options) {
+      if (opt.mediaAsset) {
+        await attachPresignedUrl(opt.mediaAsset);
+      }
+    }
+
+    // Sign row options
+    for (const row of questions.rowOptions) {
+      if (row.mediaAsset) {
+        await attachPresignedUrl(row.mediaAsset);
+      }
+    }
+
+    // Sign column options
+    for (const col of questions.columnOptions) {
+      if (col.mediaAsset) {
+        await attachPresignedUrl(col.mediaAsset);
+      }
+    }
 
     res.json(questions);
   } catch (error) {
@@ -296,6 +398,16 @@ export const getQuestions = async (req, res) => {
 
     if (!questions)
       return res.status(404).json({ message: "Question(s) not found" });
+
+    console.log(">>>>> the value of the QUESTIONS is : ", questions);
+
+    if (Array.isArray(questions)) {
+      for (const q of questions) {
+        await signQuestion(q);
+      }
+    } else {
+      await signQuestion(questions);
+    }
 
     res.status(200).json(questions);
   } catch (error) {
@@ -484,13 +596,49 @@ export const updateQuestion = async (req, res) => {
     const finalQuestion = await prisma.question.findUnique({
       where: { id },
       include: {
-        options: true,
-        rowOptions: true,
-        columnOptions: true,
+        options: { include: { mediaAsset: true } },
+        rowOptions: { include: { mediaAsset: true } },
+        columnOptions: { include: { mediaAsset: true } },
         mediaAsset: true,
         category: true,
       },
     });
+
+    // Same helper as before
+    const attachPresignedUrl = async (mediaAsset) => {
+      if (!mediaAsset) return null;
+      mediaAsset.url = await generatePresignedUrl(
+        process.env.AWS_BUCKET_NAME,
+        mediaAsset.url
+      );
+      return mediaAsset;
+    };
+
+    // Sign question-level media
+    if (finalQuestion.mediaAsset) {
+      await attachPresignedUrl(finalQuestion.mediaAsset);
+    }
+
+    // Sign options
+    for (const opt of finalQuestion.options) {
+      if (opt.mediaAsset) {
+        await attachPresignedUrl(opt.mediaAsset);
+      }
+    }
+
+    // Sign row options
+    for (const row of finalQuestion.rowOptions) {
+      if (row.mediaAsset) {
+        await attachPresignedUrl(row.mediaAsset);
+      }
+    }
+
+    // Sign column options
+    for (const col of finalQuestion.columnOptions) {
+      if (col.mediaAsset) {
+        await attachPresignedUrl(col.mediaAsset);
+      }
+    }
 
     res.status(200).json({
       message: "Question updated successfully",

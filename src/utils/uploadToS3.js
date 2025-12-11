@@ -14,7 +14,7 @@ const s3 = new S3Client({
   },
 });
 
-async function generateGetSignedUrl(bucketName, key, expiresInSeconds) {
+export async function generatePresignedUrl(bucketName, key, expiresInSeconds) {
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: key,
@@ -41,10 +41,7 @@ export const uploadToS3 = async (file, folder = "uploads") => {
 
     await s3.send(new PutObjectCommand(uploadParams));
 
-    // ✅ Public File URL
-    const fileUrl = `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
-
-    return fileUrl;
+    return fileName;
   } catch (error) {
     console.error("S3 Upload Error:", error);
     throw new Error("Failed to upload file to S3");
