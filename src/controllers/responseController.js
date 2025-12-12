@@ -53,7 +53,9 @@ const prepareAnswerData = async (answers) => {
         // You can store either numeric rating or optionId.
         selectedOptionIds = a.optionId || null;
         if (!selectedOptionIds)
-          scaleRatingValue = Number(a.answer_value) || null;
+          scaleRatingValue =
+            Number(a.answer_value) == 0 ? 0 : Number(a.answer_value) || null;
+
         break;
 
       // ✅ GRID QUESTION TYPES
@@ -532,6 +534,14 @@ export const getSurveyAnalytics = async (req, res) => {
 
     if (!survey) {
       return res.status(404).json({ message: "Survey not found" });
+    }
+
+    const isPublic = survey.settings.isResultPublic === true;
+    if (!isPublic && !req.user) {
+      return res.status(200).json({
+        message: "This Survey is private.",
+        isPublic: false,
+      });
     }
 
     // Pull all responses with answers and nested grid cells
