@@ -24,9 +24,10 @@ const prepareAnswerData = async (answers) => {
     let gridAnswers = [];
 
     switch (type) {
-      // ✅ TEXT TYPES
+      // ✅ TEXT TYPES (including number input)
       case "short answer":
       case "paragraph":
+      case "number":
         answerValue = a.answer_value || "";
         break;
 
@@ -45,13 +46,16 @@ const prepareAnswerData = async (answers) => {
           : [a.answer_value];
         break;
 
-      // ✅ LINEAR SCALE / RATING
+      // ✅ LINEAR SCALE / RATING / NPS
       case "linear scale":
       case "rating":
+      case "nps":
         // You can store either numeric rating or optionId.
         selectedOptionIds = a.optionId || null;
         if (!selectedOptionIds)
-          scaleRatingValue = Number(a.answer_value) || null;
+          scaleRatingValue =
+            Number(a.answer_value) == 0 ? 0 : Number(a.answer_value) || null;
+
         break;
 
       // ✅ GRID QUESTION TYPES
@@ -198,8 +202,6 @@ export const submitResponseWithToken = async (req, res) => {
     if (shareToken.used)
       return res.status(400).json({ message: "Token already used." });
 
-    res.status(201).json({ message: "Response submitted" });
-
     const response = await createSurveyResponse(
       shareToken.surveyId,
       user_metadata,
@@ -212,6 +214,8 @@ export const submitResponseWithToken = async (req, res) => {
       shareToken.agentUserUniqueId
     )
       await markTokenUsed(token);
+
+    return res.status(201).json({ message: "Response submitted", response });
   } catch (error) {
     console.error("Submit Response With Token Error:", error);
     res.status(500).json({ message: "Server error" });
@@ -472,9 +476,10 @@ const mapType = (type) => {
   const t = (type || "").toLowerCase();
   if (t === "multiple choice" || t === "dropdown") return "single_choice";
   if (t === "checkboxes") return "multiple_choice";
-  if (t === "linear scale" || t === "rating") return "rating";
+  if (t === "linear scale" || t === "rating" || t === "nps") return "rating";
   if (t === "multi-choice grid" || t === "checkbox grid") return "grid";
-  if (t === "short answer" || t === "paragraph") return "text";
+  if (t === "short answer" || t === "paragraph" || t === "number")
+    return "text";
   if (t === "date") return "date";
   if (t === "time") return "time";
   if (t === "file upload") return "file";
@@ -529,6 +534,14 @@ export const getSurveyAnalytics = async (req, res) => {
 
     if (!survey) {
       return res.status(404).json({ message: "Survey not found" });
+    }
+
+    const isPublic = survey.settings.isResultPublic === true;
+    if (!isPublic && !req.user) {
+      return res.status(200).json({
+        message: "This Survey is private.",
+        isPublic: false,
+      });
     }
 
     // Pull all responses with answers and nested grid cells
@@ -627,6 +640,7 @@ export const getSurveyAnalytics = async (req, res) => {
     };
 
     const questionResults = [];
+    const npsScores = []; // Collect NPS scores from all NPS-type questions
     for (const q of survey.questions) {
       const rawType = q.category?.type_name || "text";
       const uiType = mapType(rawType);
@@ -649,7 +663,7 @@ export const getSurveyAnalytics = async (req, res) => {
         }));
         questionResults.push({
           question: q.question_text,
-          type: uiType,
+          type: rawType, // Return actual question type instead of mapped UI type
           responses: responsesCount,
           data,
         });
@@ -707,13 +721,66 @@ export const getSurveyAnalytics = async (req, res) => {
           npsCandidates.push(...npsVals);
         }
 
-        questionResults.push({
-          question: q.question_text,
-          type: "rating",
-          responses: responsesCount,
-          averageRating,
-          data,
-        });
+        // Check if this is NPS type for special formatting
+        const isNPS = rawType?.toLowerCase() === "nps";
+
+        if (isNPS) {
+          // Calculate NPS-specific metrics
+          const total = responsesCount;
+          let detractors = 0;
+          let passives = 0;
+          let promoters = 0;
+
+          for (const [rating, count] of valueCount.entries()) {
+            const r = Number(rating);
+            if (r >= 0 && r <= 6) detractors += count;
+            else if (r >= 7 && r <= 8) passives += count;
+            else if (r >= 9 && r <= 10) promoters += count;
+          }
+
+          const detractorsPercent =
+            total > 0 ? Math.round((detractors / total) * 100) : 0;
+          const passivesPercent =
+            total > 0 ? Math.round((passives / total) * 100) : 0;
+          const promotersPercent =
+            total > 0 ? Math.round((promoters / total) * 100) : 0;
+          const npsScore =
+            total > 0
+              ? Math.round(((promoters - detractors) / total) * 100)
+              : 0;
+
+          // Collect this NPS score for overall stats calculation
+          npsScores.push(npsScore);
+
+          // Distribution data for bar chart
+          const distributionData = data.map(({ rating, count }) => ({
+            score: rating,
+            count: count,
+          }));
+
+          questionResults.push({
+            question: q.question_text,
+            type: rawType,
+            responses: responsesCount,
+            averageRating,
+            npsScore,
+            data: {
+              detractors: detractorsPercent,
+              passives: passivesPercent,
+              promoters: promotersPercent,
+            },
+            distributionData,
+          });
+        } else {
+          // Regular rating type
+          questionResults.push({
+            question: q.question_text,
+            type: rawType,
+            responses: responsesCount,
+            averageRating,
+            data,
+          });
+        }
       }
 
       // Grid questions
@@ -741,7 +808,7 @@ export const getSurveyAnalytics = async (req, res) => {
         }));
         questionResults.push({
           question: q.question_text,
-          type: "grid",
+          type: rawType, // Return actual question type instead of "grid"
           responses: responsesCount,
           data,
         });
@@ -749,37 +816,97 @@ export const getSurveyAnalytics = async (req, res) => {
 
       // Text/date/time/file: provide counts and samples for text
       else {
-        let sampleResponses = [];
-        if (uiType === "text") {
-          const texts = qa
+        // Check if this is a number type for special formatting
+        const isNumber = rawType?.toLowerCase() === "number";
+
+        if (isNumber) {
+          // Extract numeric values
+          const numbers = qa
             .map((a) => {
               const val = tryParse(a.answer_value);
-              if (typeof val === "string") return val;
-              if (val != null) return String(val);
-              return null;
+              const num = Number(val);
+              return !Number.isNaN(num) ? num : null;
             })
-            .filter((v) => typeof v === "string" && v.trim() !== "");
-          // take up to 4 recent samples (by submitted_at desc)
-          const sorted = qa
-            .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
-            .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
-            .sort((x, y) => new Date(y.t) - new Date(x.t))
-            .slice(0, 5)
-            .map((x) => x.v);
-          sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
-        }
+            .filter((v) => v !== null);
 
-        questionResults.push({
-          question: q.question_text,
-          type: uiType,
-          responses: qa.length,
-          ...(uiType === "text" ? { sampleResponses } : {}),
-        });
+          if (numbers.length > 0) {
+            // Calculate statistics
+            const sum = numbers.reduce((acc, n) => acc + n, 0);
+            const average = Math.round((sum / numbers.length) * 100) / 100;
+            const sortedNumbers = [...numbers].sort((a, b) => a - b);
+            const min = sortedNumbers[0];
+            const max = sortedNumbers[sortedNumbers.length - 1];
+            const median =
+              sortedNumbers.length % 2 === 0
+                ? (sortedNumbers[sortedNumbers.length / 2 - 1] +
+                    sortedNumbers[sortedNumbers.length / 2]) /
+                  2
+                : sortedNumbers[Math.floor(sortedNumbers.length / 2)];
+
+            questionResults.push({
+              question: q.question_text,
+              type: rawType,
+              responses: qa.length,
+              average,
+              data: {
+                min,
+                max,
+                median,
+              },
+            });
+          } else {
+            // No valid numbers
+            questionResults.push({
+              question: q.question_text,
+              type: rawType,
+              responses: qa.length,
+              average: null,
+              data: {
+                min: null,
+                max: null,
+                median: null,
+              },
+            });
+          }
+        } else {
+          // Regular text/date/time/file handling
+          let sampleResponses = [];
+          if (uiType === "text") {
+            const texts = qa
+              .map((a) => {
+                const val = tryParse(a.answer_value);
+                if (typeof val === "string") return val;
+                if (val != null) return String(val);
+                return null;
+              })
+              .filter((v) => typeof v === "string" && v.trim() !== "");
+            // take up to 4 recent samples (by submitted_at desc)
+            const sorted = qa
+              .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
+              .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
+              .sort((x, y) => new Date(y.t) - new Date(x.t))
+              .slice(0, 5)
+              .map((x) => x.v);
+            sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
+          }
+
+          questionResults.push({
+            question: q.question_text,
+            type: rawType, // Return actual question type instead of mapped UI type
+            responses: qa.length,
+            ...(uiType === "text" ? { sampleResponses } : {}),
+          });
+        }
       }
     }
 
-    // Global NPS score
-    const npsScore = computeNPS(npsCandidates);
+    // Global NPS score - calculate average of all NPS-type question scores
+    const overallNpsScore =
+      npsScores.length > 0
+        ? Math.round(
+            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length
+          )
+        : 0;
 
     // Individual Responses section
     // Attempt to infer rating max for display like "4/5"
@@ -927,7 +1054,7 @@ export const getSurveyAnalytics = async (req, res) => {
         totalResponses,
         completionRate, // %
         avgTime, // minutes
-        npsScore, // -100..100
+        npsScore: overallNpsScore, // Average of all NPS-type question scores
       },
       questionResults,
       individualResponses,
@@ -1057,6 +1184,7 @@ export const exportSurveyAnalytics = async (req, res) => {
     };
 
     const questionResults = [];
+    const npsScores = []; // Collect NPS scores from all NPS-type questions
     for (const q of survey.questions) {
       const rawType = q.category?.type_name || "text";
       const uiType = mapType(rawType);
@@ -1079,7 +1207,7 @@ export const exportSurveyAnalytics = async (req, res) => {
         }));
         questionResults.push({
           question: q.question_text,
-          type: uiType,
+          type: rawType, // Return actual question type instead of mapped UI type
           responses: responsesCount,
           data,
         });
@@ -1137,13 +1265,66 @@ export const exportSurveyAnalytics = async (req, res) => {
           npsCandidates.push(...npsVals);
         }
 
-        questionResults.push({
-          question: q.question_text,
-          type: "rating",
-          responses: responsesCount,
-          averageRating,
-          data,
-        });
+        // Check if this is NPS type for special formatting
+        const isNPS = rawType?.toLowerCase() === "nps";
+
+        if (isNPS) {
+          // Calculate NPS-specific metrics
+          const total = responsesCount;
+          let detractors = 0;
+          let passives = 0;
+          let promoters = 0;
+
+          for (const [rating, count] of valueCount.entries()) {
+            const r = Number(rating);
+            if (r >= 0 && r <= 6) detractors += count;
+            else if (r >= 7 && r <= 8) passives += count;
+            else if (r >= 9 && r <= 10) promoters += count;
+          }
+
+          const detractorsPercent =
+            total > 0 ? Math.round((detractors / total) * 100) : 0;
+          const passivesPercent =
+            total > 0 ? Math.round((passives / total) * 100) : 0;
+          const promotersPercent =
+            total > 0 ? Math.round((promoters / total) * 100) : 0;
+          const npsScore =
+            total > 0
+              ? Math.round(((promoters - detractors) / total) * 100)
+              : 0;
+
+          // Collect this NPS score for overall stats calculation
+          npsScores.push(npsScore);
+
+          // Distribution data for bar chart
+          const distributionData = data.map(({ rating, count }) => ({
+            score: rating,
+            count: count,
+          }));
+
+          questionResults.push({
+            question: q.question_text,
+            type: rawType,
+            responses: responsesCount,
+            averageRating,
+            npsScore,
+            data: {
+              detractors: detractorsPercent,
+              passives: passivesPercent,
+              promoters: promotersPercent,
+            },
+            distributionData,
+          });
+        } else {
+          // Regular rating type
+          questionResults.push({
+            question: q.question_text,
+            type: rawType,
+            responses: responsesCount,
+            averageRating,
+            data,
+          });
+        }
       }
 
       // Grid questions
@@ -1171,7 +1352,7 @@ export const exportSurveyAnalytics = async (req, res) => {
         }));
         questionResults.push({
           question: q.question_text,
-          type: "grid",
+          type: rawType, // Return actual question type instead of "grid"
           responses: responsesCount,
           data,
         });
@@ -1179,37 +1360,97 @@ export const exportSurveyAnalytics = async (req, res) => {
 
       // Text/date/time/file: provide counts and samples for text
       else {
-        let sampleResponses = [];
-        if (uiType === "text") {
-          const texts = qa
+        // Check if this is a number type for special formatting
+        const isNumber = rawType?.toLowerCase() === "number";
+
+        if (isNumber) {
+          // Extract numeric values
+          const numbers = qa
             .map((a) => {
               const val = tryParse(a.answer_value);
-              if (typeof val === "string") return val;
-              if (val != null) return String(val);
-              return null;
+              const num = Number(val);
+              return !Number.isNaN(num) ? num : null;
             })
-            .filter((v) => typeof v === "string" && v.trim() !== "");
-          // take up to 4 recent samples (by submitted_at desc)
-          const sorted = qa
-            .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
-            .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
-            .sort((x, y) => new Date(y.t) - new Date(x.t))
-            .slice(0, 5)
-            .map((x) => x.v);
-          sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
-        }
+            .filter((v) => v !== null);
 
-        questionResults.push({
-          question: q.question_text,
-          type: uiType,
-          responses: qa.length,
-          ...(uiType === "text" ? { sampleResponses } : {}),
-        });
+          if (numbers.length > 0) {
+            // Calculate statistics
+            const sum = numbers.reduce((acc, n) => acc + n, 0);
+            const average = Math.round((sum / numbers.length) * 100) / 100;
+            const sortedNumbers = [...numbers].sort((a, b) => a - b);
+            const min = sortedNumbers[0];
+            const max = sortedNumbers[sortedNumbers.length - 1];
+            const median =
+              sortedNumbers.length % 2 === 0
+                ? (sortedNumbers[sortedNumbers.length / 2 - 1] +
+                    sortedNumbers[sortedNumbers.length / 2]) /
+                  2
+                : sortedNumbers[Math.floor(sortedNumbers.length / 2)];
+
+            questionResults.push({
+              question: q.question_text,
+              type: rawType,
+              responses: qa.length,
+              average,
+              data: {
+                min,
+                max,
+                median,
+              },
+            });
+          } else {
+            // No valid numbers
+            questionResults.push({
+              question: q.question_text,
+              type: rawType,
+              responses: qa.length,
+              average: null,
+              data: {
+                min: null,
+                max: null,
+                median: null,
+              },
+            });
+          }
+        } else {
+          // Regular text/date/time/file handling
+          let sampleResponses = [];
+          if (uiType === "text") {
+            const texts = qa
+              .map((a) => {
+                const val = tryParse(a.answer_value);
+                if (typeof val === "string") return val;
+                if (val != null) return String(val);
+                return null;
+              })
+              .filter((v) => typeof v === "string" && v.trim() !== "");
+            // take up to 4 recent samples (by submitted_at desc)
+            const sorted = qa
+              .map((a) => ({ t: a.submitted_at, v: tryParse(a.answer_value) }))
+              .filter((x) => typeof x.v === "string" && x.v.trim() !== "")
+              .sort((x, y) => new Date(y.t) - new Date(x.t))
+              .slice(0, 5)
+              .map((x) => x.v);
+            sampleResponses = sorted.length ? sorted : texts.slice(0, 5);
+          }
+
+          questionResults.push({
+            question: q.question_text,
+            type: rawType, // Return actual question type instead of mapped UI type
+            responses: qa.length,
+            ...(uiType === "text" ? { sampleResponses } : {}),
+          });
+        }
       }
     }
 
-    // Global NPS score
-    const npsScore = computeNPS(npsCandidates);
+    // Global NPS score - calculate average of all NPS-type question scores
+    const overallNpsScore =
+      npsScores.length > 0
+        ? Math.round(
+            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length
+          )
+        : 0;
 
     // Individual Responses section
     // Attempt to infer rating max for display like "4/5"
@@ -1358,7 +1599,7 @@ export const exportSurveyAnalytics = async (req, res) => {
         totalResponses,
         completionRate, // %
         avgTime, // minutes
-        npsScore, // -100..100
+        npsScore: overallNpsScore, // Average of all NPS-type question scores
       },
       questionResults,
       individualResponses,

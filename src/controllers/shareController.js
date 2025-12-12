@@ -1,5 +1,6 @@
 import prisma from "../config/db.js";
 import crypto from "crypto";
+import { generatePresignedUrl } from "../utils/uploadToS3.js";
 
 /**
  * Generate a random token hash
@@ -110,6 +111,34 @@ export const validateToken = async (req, res) => {
     if (!shareToken) return res.status(404).json({ message: "Invalid Token." });
     if (shareToken.used)
       return res.status(400).json({ message: "Token already used." });
+    // --- Inject presigned URLs ---
+    const questions = shareToken.survey.questions;
+
+    // Helper to attach presigned URL
+    const attachPresignedUrl = async (mediaAsset) => {
+      if (!mediaAsset) return null;
+      mediaAsset.url = await generatePresignedUrl(
+        process.env.AWS_BUCKET_NAME,
+        mediaAsset.url
+      );
+      return mediaAsset;
+    };
+
+    for (const q of questions) {
+      if (q.mediaAsset) await attachPresignedUrl(q.mediaAsset);
+
+      for (const opt of q.options) {
+        if (opt.mediaAsset) await attachPresignedUrl(opt.mediaAsset);
+      }
+
+      for (const row of q.rowOptions) {
+        if (row.mediaAsset) await attachPresignedUrl(row.mediaAsset);
+      }
+
+      for (const col of q.columnOptions) {
+        if (col.mediaAsset) await attachPresignedUrl(col.mediaAsset);
+      }
+    }
 
     res.json({ surveyId: shareToken.surveyId, survey: shareToken.survey });
   } catch (error) {

@@ -6,6 +6,7 @@ import {
   generateSurveyQuestionsWithCategory,
 } from "../utils/openaiService.js";
 import { createQuestionsWithOptions } from "./questionController.js";
+import { generatePresignedUrl } from "../utils/uploadToS3.js";
 
 /**
  * Create a new survey
@@ -233,7 +234,7 @@ export const createSurvey_v2 = async (req, res) => {
                 columnOptions: {
                   include: { mediaAsset: true },
                 },
-                mediaAsset: true,
+                // mediaAsset: true,
                 category: true,
               },
             });
@@ -319,6 +320,44 @@ export const getSurveyById = async (req, res) => {
     });
 
     if (!survey) return res.status(404).json({ message: "Survey not found" });
+    // Helper to attach presigned URL
+    const attachPresignedUrl = async (mediaAsset) => {
+      if (!mediaAsset) return null;
+      mediaAsset.url = await generatePresignedUrl(
+        process.env.AWS_BUCKET_NAME,
+        mediaAsset.url
+      );
+      return mediaAsset;
+    };
+
+    // Process all nested media assets
+    for (const q of survey.questions) {
+      // Question main media
+      if (q.mediaAsset) {
+        await attachPresignedUrl(q.mediaAsset);
+      }
+
+      // Options media
+      for (const opt of q.options) {
+        if (opt.mediaAsset) {
+          await attachPresignedUrl(opt.mediaAsset);
+        }
+      }
+
+      // Row Options media
+      for (const row of q.rowOptions) {
+        if (row.mediaAsset) {
+          await attachPresignedUrl(row.mediaAsset);
+        }
+      }
+
+      // Column Options media
+      for (const col of q.columnOptions) {
+        if (col.mediaAsset) {
+          await attachPresignedUrl(col.mediaAsset);
+        }
+      }
+    }
 
     res.json({ survey });
   } catch (error) {
@@ -432,7 +471,7 @@ export const updateSurvey_v2 = async (req, res) => {
                 columnOptions: {
                   include: { mediaAsset: true },
                 },
-                mediaAsset: true,
+                // mediaAsset: true,
                 category: true,
               },
             });

@@ -11,7 +11,10 @@ import surveyResultsRoutes from "./routes/surveyResultsRoutes.js";
 // import reportRoutes from "./routes/reportRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import categoriesRoutes from "./routes/categoriesRoutes.js";
+import quotaRoutes from "./routes/quotaRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
 import { swaggerSetup } from "./docs/swagger.js";
+import { upload } from "./middleware/uploadMiddleware.js";
 
 const app = express();
 app.use(cors());
@@ -29,6 +32,8 @@ app.use("/api/survey-results", surveyResultsRoutes);
 // app.use("/api/reports", reportRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/categories", categoriesRoutes);
+app.use("/api/quota", quotaRoutes);
+app.use("/api/upload", upload.single("media"), uploadRoutes);
 
 // SWAGGER DOCS
 swaggerSetup(app);

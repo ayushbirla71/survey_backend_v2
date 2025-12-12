@@ -34,6 +34,9 @@ export const createSurveyValidation = Joi.object({
     isAnonymous: Joi.boolean().optional(),
     showProgressBar: Joi.boolean().optional(),
     shuffleQuestions: Joi.boolean().optional(),
+    isResultPublic: Joi.boolean().optional(),
+    autoReloadOnSubmit: Joi.boolean().optional(),
+    requireTermsAndConditions: Joi.boolean().optional(),
   }).optional(),
   status: Joi.string().valid("DRAFT", "SCHEDULED", "PUBLISHED").optional(),
   scheduled_date: Joi.date().optional(),
@@ -54,6 +57,9 @@ export const updateSurveyValidation = Joi.object({
     isAnonymous: Joi.boolean().optional(),
     showProgressBar: Joi.boolean().optional(),
     shuffleQuestions: Joi.boolean().optional(),
+    isResultPublic: Joi.boolean().optional(),
+    autoReloadOnSubmit: Joi.boolean().optional(),
+    requireTermsAndConditions: Joi.boolean().optional(),
   }).optional(),
   status: Joi.string().valid("DRAFT", "SCHEDULED", "PUBLISHED").optional(),
   scheduled_date: Joi.date().optional(),
@@ -82,14 +88,14 @@ export const createQuestionValidation = Joi.object({
 });
 
 export const updateQuestionValidation = Joi.object({
-  // question_type: Joi.string()
-  //   .valid("TEXT", "MCQ", "RATING", "IMAGE", "VIDEO", "AUDIO", "FILE", "MATRIX")
-  //   .optional(),
+  question_type: Joi.string()
+    .valid("TEXT", "MCQ", "RATING", "IMAGE", "VIDEO", "AUDIO", "FILE", "MATRIX")
+    .optional(),
   question_text: Joi.string().min(1).max(500).optional(),
   options: Joi.array().optional(),
   rowOptions: Joi.array().optional(),
   columnOptions: Joi.array().optional(),
-  mediaId: Joi.string().uuid().optional(),
+  mediaId: Joi.string().uuid().allow(null).optional(),
   categoryId: Joi.string().uuid().optional(),
   // subCategoryId: Joi.string().uuid().optional(),
   order_index: Joi.number().integer().optional(),

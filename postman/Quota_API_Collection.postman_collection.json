@@ -1,0 +1,252 @@
+{
+  "info": {
+    "_postman_id": "quota-api-collection-001",
+    "name": "Survey Quota Management API",
+    "description": "API collection for Survey Quota Management System - Manage demographic quotas (age, gender, location, category) for surveys with vendor integration support.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "{{base_url}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.token) {",
+                  "    pm.environment.set('auth_token', jsonData.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{user_email}}\",\n    \"password\": \"{{user_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quota Management (Protected)",
+      "item": [
+        {
+          "name": "Create Quota Configuration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.quota && jsonData.quota.id) {",
+                  "    pm.environment.set('quota_id', jsonData.quota.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"total_target\": 1000,\n    \"completed_url\": \"https://vendor.example.com/complete?rid={respondent_id}&status={status}\",\n    \"terminated_url\": \"https://vendor.example.com/terminate?rid={respondent_id}&status={status}\",\n    \"quota_full_url\": \"https://vendor.example.com/quota-full?rid={respondent_id}&status={status}\",\n    \"age_quotas\": [\n        {\n            \"min_age\": 18,\n            \"max_age\": 24,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 200\n        },\n        {\n            \"min_age\": 25,\n            \"max_age\": 34,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 300\n        },\n        {\n            \"min_age\": 35,\n            \"max_age\": 44,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 250\n        },\n        {\n            \"min_age\": 45,\n            \"max_age\": 120,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 250\n        }\n    ],\n    \"gender_quotas\": [\n        {\n            \"gender\": \"MALE\",\n            \"quota_type\": \"PERCENTAGE\",\n            \"target_percentage\": 50\n        },\n        {\n            \"gender\": \"FEMALE\",\n            \"quota_type\": \"PERCENTAGE\",\n            \"target_percentage\": 50\n        }\n    ],\n    \"location_quotas\": [\n        {\n            \"country\": \"India\",\n            \"state\": \"haryana\",\n            \"city\": \"gurgaon\",\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 500\n        },\n        {\n            \"country\": \"India\",\n            \"state\": \"Delhi\",\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 500\n        }\n    ],\n    \"screening_questions\": [\n        {\n            \"id\": \"screening_age\",\n            \"type\": \"age\",\n            \"question_text\": \"What is your age group?\",\n            \"options\": [\n                { \"id\": \"age_option_0\", \"label\": \"18-24\", \"value\": \"18-24\" },\n                { \"id\": \"age_option_1\", \"label\": \"25-34\", \"value\": \"25-34\" },\n                { \"id\": \"age_option_2\", \"label\": \"35-44\", \"value\": \"35-44\" },\n                { \"id\": \"age_option_3\", \"label\": \"45+\", \"value\": \"45-120\" }\n            ],\n            \"required\": true\n        },\n        {\n            \"id\": \"screening_gender\",\n            \"type\": \"gender\",\n            \"question_text\": \"What is your gender?\",\n            \"options\": [\n                { \"id\": \"gender_option_0\", \"label\": \"Male\", \"value\": \"MALE\" },\n                { \"id\": \"gender_option_1\", \"label\": \"Female\", \"value\": \"FEMALE\" }\n            ],\n            \"required\": true\n        },\n        {\n            \"id\": \"screening_location\",\n            \"type\": \"location\",\n            \"question_text\": \"Where are you located?\",\n            \"options\": [\n                { \"id\": \"location_option_0\", \"label\": \"Gurgaon, Haryana, India\", \"value\": \"{\\\"country\\\":\\\"India\\\",\\\"state\\\":\\\"haryana\\\",\\\"city\\\":\\\"gurgaon\\\"}\" },\n                { \"id\": \"location_option_1\", \"label\": \"Delhi, India\", \"value\": \"{\\\"country\\\":\\\"India\\\",\\\"state\\\":\\\"Delhi\\\"}\" }\n            ],\n            \"required\": true\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quota/surveys/{{survey_id}}/quota",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "surveys", "{{survey_id}}", "quota"]
+            }
+          }
+        },
+        {
+          "name": "Get Quota Configuration",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/quota/surveys/{{survey_id}}/quota",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "surveys", "{{survey_id}}", "quota"]
+            }
+          }
+        },
+        {
+          "name": "Update Quota Configuration",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"total_target\": 1500,\n    \"is_active\": true,\n    \"age_quotas\": [\n        {\n            \"min_age\": 18,\n            \"max_age\": 24,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 300\n        },\n        {\n            \"min_age\": 25,\n            \"max_age\": 34,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 400\n        },\n        {\n            \"min_age\": 35,\n            \"max_age\": 44,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 400\n        },\n        {\n            \"min_age\": 45,\n            \"max_age\": 120,\n            \"quota_type\": \"COUNT\",\n            \"target_count\": 400\n        }\n    ],\n    \"screening_questions\": [\n        {\n            \"id\": \"screening_age\",\n            \"type\": \"age\",\n            \"question_text\": \"What is your age group?\",\n            \"options\": [\n                { \"id\": \"age_option_0\", \"label\": \"18-24\", \"value\": \"18-24\" },\n                { \"id\": \"age_option_1\", \"label\": \"25-34\", \"value\": \"25-34\" },\n                { \"id\": \"age_option_2\", \"label\": \"35-44\", \"value\": \"35-44\" },\n                { \"id\": \"age_option_3\", \"label\": \"45+\", \"value\": \"45-120\" }\n            ],\n            \"required\": true\n        },\n        {\n            \"id\": \"screening_gender\",\n            \"type\": \"gender\",\n            \"question_text\": \"What is your gender?\",\n            \"options\": [\n                { \"id\": \"gender_option_0\", \"label\": \"Male\", \"value\": \"MALE\" },\n                { \"id\": \"gender_option_1\", \"label\": \"Female\", \"value\": \"FEMALE\" },\n                { \"id\": \"gender_option_2\", \"label\": \"Other\", \"value\": \"OTHER\" }\n            ],\n            \"required\": true\n        }\n    ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quota/surveys/{{survey_id}}/quota",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "surveys", "{{survey_id}}", "quota"]
+            }
+          }
+        },
+        {
+          "name": "Delete Quota Configuration",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/quota/surveys/{{survey_id}}/quota",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "surveys", "{{survey_id}}", "quota"]
+            }
+          }
+        },
+        {
+          "name": "Get Quota Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/quota/surveys/{{survey_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "surveys", "{{survey_id}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vendor Integration (Public)",
+      "description": "Public endpoints for vendor integration - no authentication required",
+      "item": [
+        {
+          "name": "Check Respondent Quota",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.respondent_id) {",
+                  "    pm.environment.set('respondent_id', jsonData.respondent_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"vendor_respondent_id\": \"VENDOR_12345\",\n    \"age\": 28,\n    \"gender\": \"MALE\",\n    \"country\": \"USA\",\n    \"state\": \"California\",\n    \"city\": \"Los Angeles\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quota/{{survey_id}}/check",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "{{survey_id}}", "check"]
+            }
+          }
+        },
+        {
+          "name": "Mark Respondent Completed",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"respondent_id\": \"{{respondent_id}}\",\n    \"response_id\": \"{{response_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quota/{{survey_id}}/complete",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "{{survey_id}}", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Mark Respondent Terminated",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"respondent_id\": \"{{respondent_id}}\",\n    \"reason\": \"Screened out - did not meet criteria\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/quota/{{survey_id}}/terminate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "quota", "{{survey_id}}", "terminate"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
