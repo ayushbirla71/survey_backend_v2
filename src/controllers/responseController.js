@@ -1,4 +1,5 @@
 import prisma from "../config/db.js";
+import { generatePresignedUrl } from "../utils/uploadToS3.js";
 import { markTokenUsed } from "./shareController.js";
 
 /**
@@ -22,6 +23,7 @@ const prepareAnswerData = async (answers) => {
     let mediaLinks = [];
     let selectedOptionIds = null;
     let gridAnswers = [];
+    let rankingAnswers = null;
 
     switch (type) {
       // ✅ TEXT TYPES (including number input)
@@ -93,6 +95,16 @@ const prepareAnswerData = async (answers) => {
         answerValue = a.answer_value || null;
         break;
 
+      case "ranking": {
+        if (!Array.isArray(a.answer_value)) break;
+
+        rankingAnswers = a.answer_value.map((optionId, index) => ({
+          optionId,
+          rank_position: index + 1,
+        }));
+        break;
+      }
+
       default:
         answerValue = a.answer_value || "";
     }
@@ -105,10 +117,63 @@ const prepareAnswerData = async (answers) => {
       selected_option_ids: selectedOptionIds,
       scaleRatingValue,
       gridAnswers,
+      rankingAnswers,
     });
   }
 
   return preparedAnswers;
+};
+
+const validateRankingAnswer = (question, rankedOptionIds) => {
+  const optionCount = question.options.length;
+
+  if (!Array.isArray(rankedOptionIds)) return false;
+
+  const { min_rank_required, max_rank_allowed, allow_partial_rank } = question;
+
+  if (rankedOptionIds.length < min_rank_required) return false;
+  if (rankedOptionIds.length > max_rank_allowed) return false;
+
+  if (!allow_partial_rank && rankedOptionIds.length !== optionCount)
+    return false;
+
+  // Ensure uniqueness
+  const uniq = new Set(rankedOptionIds);
+  if (uniq.size !== rankedOptionIds.length) return false;
+
+  return true;
+};
+
+// ✅ ADD THIS — helper to sign one mediaAsset
+const signMediaAsset = async (mediaAsset) => {
+  if (!mediaAsset) return mediaAsset;
+
+  const bucket = process.env.AWS_BUCKET_NAME;
+  const key = mediaAsset.url;
+
+  if (!bucket || !key) return mediaAsset;
+
+  mediaAsset.url = await generatePresignedUrl(bucket, key);
+  return mediaAsset;
+};
+
+// ✅ ADD THIS — sign all media in a question
+const signQuestionMedia = async (q) => {
+  if (!q) return;
+
+  if (q.mediaAsset) await signMediaAsset(q.mediaAsset);
+
+  for (const opt of q.options || []) {
+    if (opt.mediaAsset) await signMediaAsset(opt.mediaAsset);
+  }
+
+  for (const row of q.rowOptions || []) {
+    if (row.mediaAsset) await signMediaAsset(row.mediaAsset);
+  }
+
+  for (const col of q.columnOptions || []) {
+    if (col.mediaAsset) await signMediaAsset(col.mediaAsset);
+  }
 };
 
 /**
@@ -126,6 +191,23 @@ const createSurveyResponse = async (surveyId, user_metadata, answers) => {
     });
 
     for (const ans of formattedAnswers) {
+      const question = await tx.question.findUnique({
+        where: { id: ans.questionId },
+        include: { options: true, category: true },
+      });
+
+      // ranking validation
+      if (ans.rankingAnswers) {
+        const isValid = validateRankingAnswer(
+          question,
+          ans.rankingAnswers.map((r) => r.optionId)
+        );
+
+        if (!isValid) {
+          throw new Error("Invalid ranking response");
+        }
+      }
+
       const resAnswer = await tx.responseAnswer.create({
         data: {
           responseId: response.id,
@@ -137,6 +219,17 @@ const createSurveyResponse = async (surveyId, user_metadata, answers) => {
           scaleRatingValue: ans.scaleRatingValue,
         },
       });
+
+      // save ranking answers
+      if (ans.rankingAnswers?.length) {
+        await tx.rankingResponseAnswer.createMany({
+          data: ans.rankingAnswers.map((r) => ({
+            responseAnswerId: resAnswer.id,
+            optionId: r.optionId,
+            rank_position: r.rank_position,
+          })),
+        });
+      }
 
       // ✅ Handle grid data
       if (ans.gridAnswers?.length > 0) {
@@ -483,6 +576,7 @@ const mapType = (type) => {
   if (t === "date") return "date";
   if (t === "time") return "time";
   if (t === "file upload") return "file";
+  if (t === "ranking") return "ranking";
   return "text";
 };
 
@@ -522,10 +616,17 @@ export const getSurveyAnalytics = async (req, res) => {
         questions: {
           orderBy: { order_index: "asc" },
           include: {
-            options: true,
-            rowOptions: true,
-            columnOptions: true,
+            options: {
+              include: { mediaAsset: true },
+            },
+            rowOptions: {
+              include: { mediaAsset: true },
+            },
+            columnOptions: {
+              include: { mediaAsset: true },
+            },
             category: true,
+            mediaAsset: true,
           },
         },
         share_tokens: true,
@@ -534,6 +635,10 @@ export const getSurveyAnalytics = async (req, res) => {
 
     if (!survey) {
       return res.status(404).json({ message: "Survey not found" });
+    }
+    // sign all survey question media
+    for (const q of survey.questions) {
+      await signQuestionMedia(q);
     }
 
     const isPublic = survey.settings.isResultPublic === true;
@@ -552,6 +657,9 @@ export const getSurveyAnalytics = async (req, res) => {
         response_answers: {
           include: {
             grid_answers: true,
+            ranking_answers: {
+              include: { option: true },
+            },
             question: {
               include: {
                 options: true,
@@ -644,6 +752,8 @@ export const getSurveyAnalytics = async (req, res) => {
     for (const q of survey.questions) {
       const rawType = q.category?.type_name || "text";
       const uiType = mapType(rawType);
+      const isRanking = rawType.toLowerCase() === "ranking";
+
       const qa = answersByQuestion.get(q.id) || [];
       const responsesCount = qa.length;
 
@@ -811,6 +921,61 @@ export const getSurveyAnalytics = async (req, res) => {
           type: rawType, // Return actual question type instead of "grid"
           responses: responsesCount,
           data,
+        });
+      }
+
+      // RANKING ANALYTICS
+      else if (isRanking) {
+        /**
+         * We want:
+         * - avg rank per option
+         * - rank distribution per option
+         */
+
+        const optionStats = new Map();
+
+        // init stats
+        for (const opt of q.options) {
+          optionStats.set(opt.id, {
+            optionId: opt.id,
+            label: opt.text ?? "",
+            mediaAsset: opt.mediaAsset,
+            totalRank: 0,
+            count: 0,
+            rankDistribution: {}, // {1: 10, 2: 5, 3: 2}
+          });
+        }
+
+        // iterate all ranking answers
+        for (const a of qa) {
+          for (const r of a.ranking_answers || []) {
+            const stat = optionStats.get(r.optionId);
+            if (!stat) continue;
+
+            stat.totalRank += r.rank_position;
+            stat.count += 1;
+            stat.rankDistribution[r.rank_position] =
+              (stat.rankDistribution[r.rank_position] || 0) + 1;
+          }
+        }
+
+        const rankingResults = Array.from(optionStats.values()).map((s) => ({
+          optionId: s.optionId,
+          label: s.label,
+          mediaAsset: s.mediaAsset,
+          averageRank:
+            s.count > 0
+              ? Math.round((s.totalRank / s.count) * 100) / 100
+              : null,
+          responses: s.count,
+          rankDistribution: s.rankDistribution,
+        }));
+
+        questionResults.push({
+          question: q.question_text,
+          type: rawType,
+          responses: responsesCount,
+          ranking: rankingResults,
         });
       }
 

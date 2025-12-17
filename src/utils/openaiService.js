@@ -447,6 +447,7 @@ export const generateSurveyQuestionsWithCategory = async (
       time: "d16778d4-85bc-4fac-8815-2bb2f1346fd9",
       "multi-choice grid": "d6c6b58e-0037-4295-a9ec-4a1b6ff03429",
       "short answer": "e690972c-0956-442e-a0b4-3c109c3d42f7",
+      ranking: "ed797df3-c526-49a5-b6b8-05e2065f1a69",
     };
 
     // 2. The JSON Schema (Based on your survey_token_JSON_response.JSON)

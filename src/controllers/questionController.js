@@ -36,6 +36,7 @@ export const createQuestionsWithOptions = async (
       case "multiple choice":
       case "checkboxes":
       case "dropdown":
+      case "ranking":
         if (options && options.length > 0) {
           optionRecords = options.map((opt) => ({
             text: opt.text || "",
@@ -187,6 +188,9 @@ export const createQuestion = async (req, res) => {
       options = [],
       rowOptions = [],
       columnOptions = [],
+      max_rank_allowed,
+      min_rank_required,
+      allow_partial_rank,
     } = body;
 
     // Prepare Question Data
@@ -199,6 +203,10 @@ export const createQuestion = async (req, res) => {
       categoryId,
     };
     if (mediaId) questionData.mediaId = mediaId;
+    if (max_rank_allowed) questionData.max_rank_allowed = max_rank_allowed;
+    if (min_rank_required) questionData.min_rank_required = min_rank_required;
+    if (allow_partial_rank)
+      questionData.allow_partial_rank = allow_partial_rank;
 
     const question = await createQuestionsWithOptions(
       questionData,
@@ -451,23 +459,31 @@ export const updateQuestion = async (req, res) => {
       options = [],
       rowOptions = [],
       columnOptions = [],
+      max_rank_allowed,
+      min_rank_required,
+      allow_partial_rank,
     } = req.body;
 
     const question = await prisma.question.findUnique({ where: { id } });
     if (!question)
       return res.status(404).json({ message: "Question not found" });
 
+    const updateData = {
+      question_type,
+      question_text,
+      order_index,
+      required,
+      categoryId,
+      mediaId,
+    };
+    if (max_rank_allowed) updateData.max_rank_allowed = max_rank_allowed;
+    if (min_rank_required) updateData.min_rank_required = min_rank_required;
+    if (allow_partial_rank) updateData.allow_partial_rank = allow_partial_rank;
+
     // Step 1: Update question
     await prisma.question.update({
       where: { id },
-      data: {
-        question_type,
-        question_text,
-        order_index,
-        required,
-        categoryId,
-        mediaId,
-      },
+      data: updateData,
     });
 
     // Step 2: Delete old options
@@ -488,19 +504,10 @@ export const updateQuestion = async (req, res) => {
     let optionRecords = [];
 
     switch (categoryType) {
-      case "short answer":
-      case "paragraph":
-        if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
-            text: opt.text || "",
-            questionId: id,
-          }));
-        }
-        break;
-
       case "multiple choice":
       case "checkboxes":
       case "dropdown":
+      case "ranking":
         if (options && options.length > 0) {
           optionRecords = options.map((opt) => ({
             text: opt.text || "",

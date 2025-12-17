@@ -85,6 +85,9 @@ export const createQuestionValidation = Joi.object({
   // subCategoryId: Joi.string().uuid().required(),
   order_index: Joi.number().integer().optional(),
   required: Joi.boolean().optional(),
+  max_rank_allowed: Joi.number().integer().min(1).max(30).optional(),
+  min_rank_required: Joi.number().integer().min(1).max(20).optional(),
+  allow_partial_rank: Joi.boolean().optional(),
 });
 
 export const updateQuestionValidation = Joi.object({
@@ -100,6 +103,9 @@ export const updateQuestionValidation = Joi.object({
   // subCategoryId: Joi.string().uuid().optional(),
   order_index: Joi.number().integer().optional(),
   required: Joi.boolean().optional(),
+  max_rank_allowed: Joi.number().integer().min(1).max(30).optional(),
+  min_rank_required: Joi.number().integer().min(1).max(20).optional(),
+  allow_partial_rank: Joi.boolean().optional(),
 });
 
 // -------- RESPONSES --------
