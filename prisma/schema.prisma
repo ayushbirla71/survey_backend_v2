@@ -159,6 +159,7 @@ model Option {
   icon          String?
 
   responseAnswer   ResponseAnswer[]
+  ranking_answers RankingResponseAnswer[]
 }
 
 model Question {
@@ -183,6 +184,11 @@ model Question {
   required       Boolean              @default(true)
   categoryId     String?
   category       QuestionCategory?    @relation(fields: [categoryId], references: [id])
+
+   // RANKING CONFIGURATION
+  max_rank_allowed    Int?    // e.g. 3
+  min_rank_required  Int?    // e.g. 1
+  allow_partial_rank Boolean @default(true)
 
   // subCategory    QuestionSubCategory? @relation(fields: [subCategoryId], references: [id])
   // subCategoryId  String?
@@ -221,6 +227,9 @@ model ResponseAnswer {
   scaleRatingValue Int?
     // relation for grid answers
   grid_answers  GridResponseAnswer[]
+  // Ranking answers
+  ranking_answers     RankingResponseAnswer[]
+
 
   submitted_at DateTime       @default(now())
   created_at   DateTime       @default(now())
@@ -234,6 +243,25 @@ model ResponseAnswer {
   columnOptionId   String
   selected         Boolean  @default(false) // true if user selected
 }
+
+model RankingResponseAnswer {
+  id               String   @id @default(uuid())
+
+  responseAnswerId String
+  responseAnswer   ResponseAnswer @relation(fields: [responseAnswerId], references: [id], onDelete: Cascade)
+
+  optionId         String
+  option           Option   @relation(fields: [optionId], references: [id])
+
+  rank_position    Int      // 1 = highest rank
+
+  created_at       DateTime @default(now())
+
+  @@unique([responseAnswerId, optionId])
+  @@index([responseAnswerId, rank_position])
+  @@index([responseAnswerId])
+}
+
 
 model ShareToken {
   id               String   @id @default(uuid()) 

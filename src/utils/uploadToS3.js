@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -14,15 +15,18 @@ const s3 = new S3Client({
   },
 });
 
-export async function generatePresignedUrl(bucketName, key, expiresInSeconds) {
+export async function generatePresignedUrl(
+  bucketName,
+  key,
+  expiresInSeconds = 3600
+) {
   const command = new GetObjectCommand({
     Bucket: bucketName,
     Key: key,
   });
-  const url = await getSignedUrl(s3, command, {
+  return getSignedUrl(s3, command, {
     expiresIn: expiresInSeconds,
   });
-  return url;
 }
 
 // ✅ Upload File Function
@@ -30,7 +34,6 @@ export const uploadToS3 = async (file, folder = "uploads") => {
   try {
     const fileExtension = file.originalname.split(".").pop();
     const fileName = `${folder}/${Date.now()}.${fileExtension}`;
-    console.log(">>>>> the vale of the FILE NAME is : ", fileName);
 
     const uploadParams = {
       Bucket: process.env.AWS_BUCKET_NAME,
@@ -46,4 +49,16 @@ export const uploadToS3 = async (file, folder = "uploads") => {
     console.error("S3 Upload Error:", error);
     throw new Error("Failed to upload file to S3");
   }
+};
+
+/** Delete file from S3 */
+export const deleteFromS3 = async (key) => {
+  if (!key) return;
+
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    })
+  );
 };

@@ -78,6 +78,7 @@ const locationQuotaSchema = Joi.object({
 
 // Category Quota Schema
 const categoryQuotaSchema = Joi.object({
+  categoryName: Joi.string().required(),
   surveyCategoryId: Joi.string().uuid().required(),
   quota_type: Joi.string().valid("COUNT", "PERCENTAGE").default("COUNT"),
   target_count: Joi.number().integer().min(1).when("quota_type", {
