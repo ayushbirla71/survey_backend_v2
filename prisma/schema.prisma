@@ -70,46 +70,47 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  surveys    Survey[]
+  surveys Survey[]
 }
 
 model Survey {
-  id                    String           @id @default(uuid())
-  title                 String
-  description           String?
-  no_of_questions       Int              @default(0)
-  userId                String
-  user                  User             @relation(fields: [userId], references: [id])
+  id              String  @id @default(uuid())
+  title           String
+  description     String?
+  no_of_questions Int     @default(0)
+  userId          String
+  user            User    @relation(fields: [userId], references: [id])
 
-  survey_send_by        SurveySendBy     @default(NONE)
-  flow_type             FlowType         @default(STATIC)
-  settings              Json             @default("{}")
-  status                SurveyStatus     @default(DRAFT)
-  scheduled_date        DateTime?
-  scheduled_type        ScheduleType     @default(IMMEDIATE)
-  is_deleted            Boolean          @default(false)
+  survey_send_by SurveySendBy @default(NONE)
+  flow_type      FlowType     @default(STATIC)
+  settings       Json         @default("{}")
+  status         SurveyStatus @default(DRAFT)
+  scheduled_date DateTime?
+  scheduled_type ScheduleType @default(IMMEDIATE)
+  is_deleted     Boolean      @default(false)
 
   // Corrected relation to SurveyCategory
   surveyCategoryId      String?
-  surveyCategory        SurveyCategory?  @relation(fields: [surveyCategoryId], references: [id])
-  autoGenerateQuestions Boolean          @default(false)
+  surveyCategory        SurveyCategory? @relation(fields: [surveyCategoryId], references: [id])
+  autoGenerateQuestions Boolean         @default(false)
 
-  created_at            DateTime         @default(now())
-  updated_at            DateTime         @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  questions             Question[]
-  responses             Response[]
-  share_tokens          ShareToken[]
-  audiences             SurveyAudience[]
+  questions              Question[]
+  responses              Response[]
+  share_tokens           ShareToken[]
+  audiences              SurveyAudience[]
   ai_generated_questions AIGeneratedQuestion[]
-  quota                 SurveyQuota?
+  quota                  SurveyQuota?
+  vendorConfig           SurveyVendorConfig?
 }
 
 model QuestionCategory {
-  id          String     @id @default(uuid())
-  type_name   String     @unique
-  settings    Json       @default("{}")
-  questions   Question[]
+  id        String     @id @default(uuid())
+  type_name String     @unique
+  settings  Json       @default("{}")
+  questions Question[]
   // sub_categories QuestionSubCategory[]
 }
 
@@ -131,150 +132,149 @@ model MediaAsset {
   meta          Json      @default("{}")
   created_at    DateTime  @default(now())
 
-  options       Option?    @relation(name: "MediaAssetToOption")
-  questions     Question[]
+  options        Option?          @relation(name: "MediaAssetToOption")
+  questions      Question[]
   responseAnswer ResponseAnswer[]
 }
 
 model Option {
-  id            String      @id @default(uuid())
-  text          String?
+  id   String  @id @default(uuid())
+  text String?
 
   // Optional media
-  mediaId       String?     @unique
-  mediaAsset    MediaAsset?  @relation(name: "MediaAssetToOption",fields: [mediaId], references: [id])
+  mediaId    String?     @unique
+  mediaAsset MediaAsset? @relation(name: "MediaAssetToOption", fields: [mediaId], references: [id])
 
-   // Relations back to question types
-  questionId    String
-  question      Question    @relation(name:"QuestionOptions",fields: [questionId], references: [id])
+  // Relations back to question types
+  questionId             String
+  question               Question  @relation(name: "QuestionOptions", fields: [questionId], references: [id])
   rowQuestionOptionId    String?
-  rowQuestionOptions      Question?    @relation(name:"QuestionRowOptions",fields: [rowQuestionOptionId], references: [id])
-  columnQuestionOptionId    String?
-  columnQuestionOptions      Question?    @relation(name:"QuestionColumnOptions",fields: [columnQuestionOptionId], references: [id])
+  rowQuestionOptions     Question? @relation(name: "QuestionRowOptions", fields: [rowQuestionOptionId], references: [id])
+  columnQuestionOptionId String?
+  columnQuestionOptions  Question? @relation(name: "QuestionColumnOptions", fields: [columnQuestionOptionId], references: [id])
 
   // Linear / Rating Question Metadata
-  rangeFrom     Int?
-  rangeTo       Int?
-  fromLabel     String?
-  toLabel       String?
-  icon          String?
+  rangeFrom Int?
+  rangeTo   Int?
+  fromLabel String?
+  toLabel   String?
+  icon      String?
 
-  responseAnswer   ResponseAnswer[]
+  responseAnswer  ResponseAnswer[]
   ranking_answers RankingResponseAnswer[]
 }
 
 model Question {
-  id             String               @id @default(uuid())
-  surveyId       String
-  survey         Survey               @relation(fields: [surveyId], references: [id])
+  id       String @id @default(uuid())
+  surveyId String
+  survey   Survey @relation(fields: [surveyId], references: [id])
 
-  question_type  QuestionType
-  question_text  String
+  question_type QuestionType
+  question_text String
 
   // Relations for different types of options
-  options        Option[]             @relation(name: "QuestionOptions")
-  rowOptions     Option[]             @relation(name: "QuestionRowOptions")
-  columnOptions  Option[]             @relation(name: "QuestionColumnOptions")
+  options       Option[] @relation(name: "QuestionOptions")
+  rowOptions    Option[] @relation(name: "QuestionRowOptions")
+  columnOptions Option[] @relation(name: "QuestionColumnOptions")
 
   // Optional media attachment
-  mediaId        String?               // Required: each question must have a media record
-  mediaAsset     MediaAsset?           @relation(fields: [mediaId], references: [id])
+  mediaId    String? // Required: each question must have a media record
+  mediaAsset MediaAsset? @relation(fields: [mediaId], references: [id])
 
   // Other metadata
-  order_index    Int                  @default(0)
-  required       Boolean              @default(true)
-  categoryId     String?
-  category       QuestionCategory?    @relation(fields: [categoryId], references: [id])
+  order_index Int               @default(0)
+  required    Boolean           @default(true)
+  categoryId  String?
+  category    QuestionCategory? @relation(fields: [categoryId], references: [id])
 
-   // RANKING CONFIGURATION
-  max_rank_allowed    Int?    // e.g. 3
-  min_rank_required  Int?    // e.g. 1
+  // RANKING CONFIGURATION
+  max_rank_allowed   Int? // e.g. 3
+  min_rank_required  Int? // e.g. 1
   allow_partial_rank Boolean @default(true)
 
   // subCategory    QuestionSubCategory? @relation(fields: [subCategoryId], references: [id])
   // subCategoryId  String?
 
-  created_at     DateTime             @default(now())
-  updated_at     DateTime             @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   response_answers ResponseAnswer[]
 }
 
 model Response {
-  id              String           @id @default(uuid())
-  surveyId        String
-  survey          Survey           @relation(fields: [surveyId], references: [id])
-  user_metadata   Json             @default("{}")
-  created_at      DateTime         @default(now())
+  id            String   @id @default(uuid())
+  surveyId      String
+  survey        Survey   @relation(fields: [surveyId], references: [id])
+  user_metadata Json     @default("{}")
+  created_at    DateTime @default(now())
 
   response_answers ResponseAnswer[]
 }
 
 model ResponseAnswer {
-  id           String         @id @default(uuid())
+  id           String      @id @default(uuid())
   responseId   String
-  response     Response       @relation(fields: [responseId], references: [id])
+  response     Response    @relation(fields: [responseId], references: [id])
   questionId   String
-  question     Question       @relation(fields: [questionId], references: [id])
+  question     Question    @relation(fields: [questionId], references: [id])
   // answer_type  String
   answer_value String?
-  mediaId     String?  
-  mediaAsset   MediaAsset?    @relation(fields: [mediaId], references: [id])
+  mediaId      String?
+  mediaAsset   MediaAsset? @relation(fields: [mediaId], references: [id])
 
   // For saving  Options in answer
-  selected_option_ids Json? 
-  option    Option[]
-  
+  selected_option_ids Json?
+  option              Option[]
+
   scaleRatingValue Int?
-    // relation for grid answers
-  grid_answers  GridResponseAnswer[]
+  // relation for grid answers
+  grid_answers     GridResponseAnswer[]
   // Ranking answers
-  ranking_answers     RankingResponseAnswer[]
+  ranking_answers  RankingResponseAnswer[]
 
-
-  submitted_at DateTime       @default(now())
-  created_at   DateTime       @default(now())
+  submitted_at DateTime @default(now())
+  created_at   DateTime @default(now())
 }
 
- model GridResponseAnswer {
-  id               String   @id @default(uuid())
+model GridResponseAnswer {
+  id               String         @id @default(uuid())
   responseAnswerId String
   responseAnswer   ResponseAnswer @relation(fields: [responseAnswerId], references: [id])
   rowOptionId      String
   columnOptionId   String
-  selected         Boolean  @default(false) // true if user selected
+  selected         Boolean        @default(false) // true if user selected
 }
 
 model RankingResponseAnswer {
-  id               String   @id @default(uuid())
+  id String @id @default(uuid())
 
   responseAnswerId String
   responseAnswer   ResponseAnswer @relation(fields: [responseAnswerId], references: [id], onDelete: Cascade)
 
-  optionId         String
-  option           Option   @relation(fields: [optionId], references: [id])
+  optionId String
+  option   Option @relation(fields: [optionId], references: [id])
 
-  rank_position    Int      // 1 = highest rank
+  rank_position Int // 1 = highest rank
 
-  created_at       DateTime @default(now())
+  created_at DateTime @default(now())
 
   @@unique([responseAnswerId, optionId])
   @@index([responseAnswerId, rank_position])
   @@index([responseAnswerId])
 }
 
-
 model ShareToken {
-  id               String   @id @default(uuid()) 
-  surveyId         String
-  survey           Survey   @relation(fields: [surveyId], references: [id])
-  recipient_email  String?
-  recipient_mobile String?
+  id                String    @id @default(uuid())
+  surveyId          String
+  survey            Survey    @relation(fields: [surveyId], references: [id])
+  recipient_email   String?
+  recipient_mobile  String?
   agentUserUniqueId String?
-  token_hash       String
-  expires_at       DateTime?
-  used             Boolean  @default(false)
-  created_at       DateTime @default(now())
+  vendor_respondent_id String?
+  token_hash        String
+  expires_at        DateTime?
+  used              Boolean   @default(false)
+  created_at        DateTime  @default(now())
 }
 
 model MasterAudience {
@@ -298,26 +298,26 @@ model SurveyAudience {
 }
 
 model AIGeneratedQuestion {
-  id                String      @id @default(uuid())
-  surveyId          String
-  survey            Survey      @relation(fields: [surveyId], references: [id])
+  id       String @id @default(uuid())
+  surveyId String
+  survey   Survey @relation(fields: [surveyId], references: [id])
 
-  question_type     QuestionType
-  question_text     String
-  options           Json        @default("[]")
-  order_index       Int         @default(0)
-  required          Boolean     @default(true)
-  categoryId        String
+  question_type QuestionType
+  question_text String
+  options       Json         @default("[]")
+  order_index   Int          @default(0)
+  required      Boolean      @default(true)
+  categoryId    String
 
-  ai_prompt         String?
-  ai_model          String?
-  confidence_score  Float?
+  ai_prompt        String?
+  ai_model         String?
+  confidence_score Float?
 
-  is_approved       Boolean     @default(false)
-  is_added_to_survey Boolean    @default(false)
+  is_approved        Boolean @default(false)
+  is_added_to_survey Boolean @default(false)
 
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 }
 
 model SurveyCategory {
@@ -354,132 +354,132 @@ enum RespondentStatus {
 //////////////////////////////
 
 model SurveyQuota {
-  id                String      @id @default(uuid())
-  surveyId          String      @unique
-  survey            Survey      @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  surveyId String @unique
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  total_target      Int
-  completed_url     String?
-  terminated_url    String?
-  quota_full_url    String?
+  total_target   Int
+  completed_url  String?
+  terminated_url String?
+  quota_full_url String?
 
-  total_completed   Int         @default(0)
-  total_terminated  Int         @default(0)
-  total_quota_full  Int         @default(0)
+  total_completed  Int @default(0)
+  total_terminated Int @default(0)
+  total_quota_full Int @default(0)
 
-  is_active         Boolean     @default(true)
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @updatedAt
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   // Quota groups
-  age_quotas        AgeQuota[]
-  gender_quotas     GenderQuota[]
-  location_quotas   LocationQuota[]
-  category_quotas   CategoryQuota[]
-  respondents       QuotaRespondent[]
+  age_quotas          AgeQuota[]
+  gender_quotas       GenderQuota[]
+  location_quotas     LocationQuota[]
+  category_quotas     CategoryQuota[]
+  respondents         QuotaRespondent[]
   screening_questions ScreeningQuestion[]
 }
 
 model AgeQuota {
-  id                String      @id @default(uuid())
-  surveyQuotaId     String
-  surveyQuota       SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
   min_age           Int
   max_age           Int
-  quota_type        QuotaType   @default(COUNT)
+  quota_type        QuotaType @default(COUNT)
   target_count      Int?
   target_percentage Float?
-  current_count     Int         @default(0)
-  is_active         Boolean     @default(true)
+  current_count     Int       @default(0)
+  is_active         Boolean   @default(true)
 
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([surveyQuotaId, min_age, max_age])
 }
 
 model GenderQuota {
-  id                String      @id @default(uuid())
-  surveyQuotaId     String
-  surveyQuota       SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
   gender            Gender
-  quota_type        QuotaType   @default(COUNT)
+  quota_type        QuotaType @default(COUNT)
   target_count      Int?
   target_percentage Float?
-  current_count     Int         @default(0)
-  is_active         Boolean     @default(true)
+  current_count     Int       @default(0)
+  is_active         Boolean   @default(true)
 
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@unique([surveyQuotaId, gender])
 }
 
 model LocationQuota {
-  id                String      @id @default(uuid())
-  surveyQuotaId     String
-  surveyQuota       SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  country           String?
-  state             String?
-  city              String?
-  postal_code       String?
+  country     String?
+  state       String?
+  city        String?
+  postal_code String?
 
-  quota_type        QuotaType   @default(COUNT)
+  quota_type        QuotaType @default(COUNT)
   target_count      Int?
   target_percentage Float?
-  current_count     Int         @default(0)
-  is_active         Boolean     @default(true)
+  current_count     Int       @default(0)
+  is_active         Boolean   @default(true)
 
-  created_at        DateTime    @default(now())
-  updated_at        DateTime    @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([surveyQuotaId, country, state, city])
 }
 
 model CategoryQuota {
-  id                String         @id @default(uuid())
-  surveyQuotaId     String
-  surveyQuota       SurveyQuota    @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  surveyCategoryId  String
-  surveyCategory    SurveyCategory @relation(fields: [surveyCategoryId], references: [id])
+  surveyCategoryId String
+  surveyCategory   SurveyCategory @relation(fields: [surveyCategoryId], references: [id])
 
-  quota_type        QuotaType      @default(COUNT)
+  quota_type        QuotaType @default(COUNT)
   target_count      Int?
   target_percentage Float?
-  current_count     Int            @default(0)
-  is_active         Boolean        @default(true)
+  current_count     Int       @default(0)
+  is_active         Boolean   @default(true)
 
-  created_at        DateTime       @default(now())
-  updated_at        DateTime       @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@unique([surveyQuotaId, surveyCategoryId])
 }
 
 model QuotaRespondent {
-  id                    String           @id @default(uuid())
-  surveyQuotaId         String
-  surveyQuota           SurveyQuota      @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  vendor_respondent_id  String?
-  age                   Int?
-  gender                Gender?
-  country               String?
-  state                 String?
-  city                  String?
-  surveyCategoryId      String?
+  vendor_respondent_id String?
+  age                  Int?
+  gender               Gender?
+  country              String?
+  state                String?
+  city                 String?
+  surveyCategoryId     String?
 
-  status                RespondentStatus @default(QUALIFIED)
-  redirect_url_called   String?
-  redirect_called_at    DateTime?
+  status              RespondentStatus @default(QUALIFIED)
+  redirect_url_called String?
+  redirect_called_at  DateTime?
 
-  responseId            String?          @unique
+  responseId String? @unique
 
-  created_at            DateTime         @default(now())
-  updated_at            DateTime         @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@index([surveyQuotaId, status])
   @@index([vendor_respondent_id])
@@ -497,40 +497,186 @@ enum ScreeningQuestionType {
 }
 
 model ScreeningQuestion {
-  id                String                  @id @default(uuid())
-  surveyQuotaId     String
-  surveyQuota       SurveyQuota             @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  question_id       String                  // Frontend-provided ID like "screening_age"
-  type              ScreeningQuestionType
-  question_text     String
-  required          Boolean                 @default(true)
-  order_index       Int                     @default(0)
+  question_id   String // Frontend-provided ID like "screening_age"
+  type          ScreeningQuestionType
+  question_text String
+  required      Boolean               @default(true)
+  order_index   Int                   @default(0)
 
-  is_active         Boolean                 @default(true)
-  created_at        DateTime                @default(now())
-  updated_at        DateTime                @updatedAt
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  options           ScreeningQuestionOption[]
+  options ScreeningQuestionOption[]
 
   @@unique([surveyQuotaId, question_id])
   @@index([surveyQuotaId, type])
 }
 
 model ScreeningQuestionOption {
-  id                    String            @id @default(uuid())
-  screeningQuestionId   String
-  screeningQuestion     ScreeningQuestion @relation(fields: [screeningQuestionId], references: [id], onDelete: Cascade)
+  id                  String            @id @default(uuid())
+  screeningQuestionId String
+  screeningQuestion   ScreeningQuestion @relation(fields: [screeningQuestionId], references: [id], onDelete: Cascade)
 
-  option_id             String            // Frontend-provided ID like "age_option_0"
-  label                 String
-  value                 String            // Can be simple value or JSON for location
+  option_id String // Frontend-provided ID like "age_option_0"
+  label     String
+  value     String // Can be simple value or JSON for location
 
-  order_index           Int               @default(0)
-  is_active             Boolean           @default(true)
+  order_index Int     @default(0)
+  is_active   Boolean @default(true)
 
-  created_at            DateTime          @default(now())
-  updated_at            DateTime          @updatedAt
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
   @@unique([screeningQuestionId, option_id])
+}
+
+// VENDOR
+enum VendorKey {
+  INNOVATEMR
+}
+
+enum VendorAuthType {
+  API_KEY
+  BASIC
+  OAUTH2
+  CUSTOM
+}
+
+enum VendorSurveyStatus {
+  CREATED
+  LIVE
+  PAUSED
+  CLOSED
+}
+
+// For STORING vendors
+model Vendor {
+  id        String    @id @default(uuid())
+  key       VendorKey @unique
+  name      String
+  is_active Boolean   @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  api_configs           VendorApiConfig[]
+  survey_vendor_configs SurveyVendorConfig[]
+  question_library      VendorQuestionLibrary[]
+}
+
+// for saving the VENDOR API CONFIG
+model VendorApiConfig {
+  id       String @id @default(uuid())
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  api_version String // "v1", "v2", "2024-01"
+  base_url    String
+
+  auth_type   VendorAuthType
+  credentials Json // encrypted at app layer
+
+  is_default Boolean @default(false)
+  is_active  Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  survey_vendor_configs   SurveyVendorConfig[]
+  vendor_question_library VendorQuestionLibrary[]
+
+  @@unique([vendorId, api_version])
+}
+
+model SurveyVendorConfig {
+  id       String @id @default(uuid())
+  surveyId String @unique
+  survey   Survey @relation(fields: [surveyId], references: [id])
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id])
+
+  api_config_id String
+  api_config    VendorApiConfig @relation(fields: [api_config_id], references: [id])
+
+  vendor_survey_id String   // jobId
+  status           VendorSurveyStatus // CREATED | LIVE | PAUSED | CLOSED
+  vendor_group_id  String?   // groupId
+  is_target_added  Boolean  @default(false)
+  vendor_quota_id  String?   // quotaId
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+// for saving the vendor QUESTIONS library
+model VendorQuestionLibrary {
+  id String @id @default(uuid())
+
+  vendorId String
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  api_config_id String?
+  api_config    VendorApiConfig? @relation(fields: [api_config_id], references: [id])
+
+  country_code String // ISO-2 e.g. "US", "IN"
+  language     String // e.g. "ENGLISH", "HINDI"
+
+  question_key       String // vendor internal code (e.g. "AGE_Q1")
+  question_text      String
+  question_type      String
+  vendor_question_id String?
+
+  metadata Json? // vendor-specific rules, mappings, validations
+
+  is_active Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  category VendorQuestionCategory[]
+  options  VendorQuestionOption[]
+  // surveys       SurveyVendorQuestion[]
+
+  @@unique([vendorId, question_key, country_code, language])
+  @@index([vendorId])
+  @@index([country_code, language])
+  @@index([question_key])
+  @@index([is_active])
+}
+
+// for Vendor Queston Options
+model VendorQuestionOption {
+  id String @id @default(uuid())
+
+  questionId String
+  question   VendorQuestionLibrary @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  option_text      String
+  vendor_option_id String? // vendor option code
+
+  order_index Int?
+
+  created_at DateTime @default(now())
+}
+
+// for vendor questions Category
+model VendorQuestionCategory {
+  id String @id @default(uuid())
+
+  questionId              String
+  vendor_question_library VendorQuestionLibrary @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  vendor_category_id String
+  category_name      String
+  is_primary         Boolean @default(false)
+
+  order_index Int?
+
+  created_at DateTime @default(now())
 }
