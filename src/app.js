@@ -15,6 +15,8 @@ import quotaRoutes from "./routes/quotaRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import { swaggerSetup } from "./docs/swagger.js";
 import { upload } from "./middleware/uploadMiddleware.js";
+import vendorRoutes from "./routes/vendorRoutes.js";
+import webhookRoutes from "./routes/webhookRoutes.js";
 
 const app = express();
 app.use(cors());
@@ -34,6 +36,11 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/categories", categoriesRoutes);
 app.use("/api/quota", quotaRoutes);
 app.use("/api/upload", upload.single("media"), uploadRoutes);
+
+// VENDOR ROUTES
+app.use("/api/vendors", vendorRoutes);
+
+app.use("/api/webhook", webhookRoutes);
 
 // SWAGGER DOCS
 swaggerSetup(app);

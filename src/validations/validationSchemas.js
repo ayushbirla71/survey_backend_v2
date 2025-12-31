@@ -28,7 +28,7 @@ export const createSurveyValidation = Joi.object({
   description: Joi.string().max(500).required(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
-    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT")
+    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT", "VENDOR")
     .optional(),
   settings: Joi.object({
     isAnonymous: Joi.boolean().optional(),
@@ -51,7 +51,7 @@ export const updateSurveyValidation = Joi.object({
   description: Joi.string().max(500).optional(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
-    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT")
+    .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT", "VENDOR")
     .optional(),
   settings: Joi.object({
     isAnonymous: Joi.boolean().optional(),

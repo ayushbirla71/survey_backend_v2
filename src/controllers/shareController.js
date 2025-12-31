@@ -5,7 +5,7 @@ import { generatePresignedUrl } from "../utils/uploadToS3.js";
 /**
  * Generate a random token hash
  */
-const generateTokenHash = () => crypto.randomBytes(20).toString("hex");
+export const generateTokenHash = () => crypto.randomBytes(20).toString("hex");
 
 /**
  * Share survey
