@@ -4,6 +4,7 @@ import {
   buildQuotaConditions,
   buildVendorTargetPayload,
   ingestInnovateMRQuestions,
+  ingestInnovateMRQuestions_v2,
   validateInnovateMRResponse,
 } from "../utils/vendorUtils.js";
 
@@ -299,6 +300,83 @@ export const getSelectedVendorQuestions = async (req, res) => {
       return res.json({
         message: "Vendor Questions retrieved successfully",
         data: questions,
+      });
+    }
+
+    return res.json({
+      message: "Vendor Questions retrieved successfully",
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Get Vendor Questions Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getSelectedVendorQuestions_v2 = async (req, res) => {
+  try {
+    const {
+      countryCode = "IN",
+      language = "ENGLISH",
+      source = "CUSTOM",
+      vendorId,
+    } = req.query;
+    console.log(
+      ">>>>> the value of the COUNTRY CODE and LANGUAGE is : ",
+      countryCode,
+      language,
+      source,
+      vendorId
+    );
+
+    const findQuestionsWhere = {
+      country_code: countryCode,
+      language,
+    };
+    if (source === "VENDOR") {
+      findQuestionsWhere.source = "VENDOR";
+      findQuestionsWhere.vendorId = vendorId;
+    }
+
+    const questions = await prisma.screeningQuestionDefinition.findMany({
+      where: findQuestionsWhere,
+      include: { options: true },
+    });
+    console.log(">>>>> the value of the QUESTIONS is : ", questions);
+
+    if (questions.length === 0) {
+      if (source === "VENDOR") {
+        const apiConfigId = await prisma.vendorApiConfig.findFirst({
+          where: { vendorId, is_default: true },
+          select: { id: true },
+        });
+        // console.log(">>>>> the value of the API CONFIG ID is : ", apiConfigId);
+
+        const fetchQuestionsFromVendor = await ingestInnovateMRQuestions_v2({
+          vendorId,
+          apiConfigId: apiConfigId.id,
+          countryCode,
+          language,
+        });
+        // console.log(
+        //   ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
+        //   fetchQuestionsFromVendor
+        // );
+
+        const questions = await prisma.screeningQuestionDefinition.findMany({
+          where: { vendorId, country_code: countryCode, language },
+          include: { options: true },
+        });
+
+        return res.json({
+          message: "Vendor Questions retrieved successfully",
+          data: questions,
+        });
+      }
+
+      return res.json({
+        message: "No questions found",
+        data: [],
       });
     }
 

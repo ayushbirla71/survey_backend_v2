@@ -16,6 +16,7 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import { swaggerSetup } from "./docs/swagger.js";
 import { upload } from "./middleware/uploadMiddleware.js";
 import vendorRoutes from "./routes/vendorRoutes.js";
+import screeningQuestionRoutes from "./routes/screeningQuestionsRoute.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 
 const app = express();
@@ -39,6 +40,9 @@ app.use("/api/upload", upload.single("media"), uploadRoutes);
 
 // VENDOR ROUTES
 app.use("/api/vendors", vendorRoutes);
+
+// SCREENING QUESTIONS ROUTES
+app.use("/api/screening-questions", screeningQuestionRoutes);
 
 app.use("/api/webhook", webhookRoutes);
 

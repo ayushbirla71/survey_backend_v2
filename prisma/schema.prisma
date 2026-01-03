@@ -102,6 +102,7 @@ model Survey {
   share_tokens           ShareToken[]
   audiences              SurveyAudience[]
   ai_generated_questions AIGeneratedQuestion[]
+  survey_question_configs SurveyQuestionConfig[]
   quota                  SurveyQuota?
   vendorConfig           SurveyVendorConfig?
 }
@@ -324,7 +325,7 @@ model SurveyCategory {
   id              String          @id @default(uuid())
   name            String          @unique
   surveys         Survey[]
-  category_quotas CategoryQuota[]
+  // category_quotas CategoryQuota[]
 }
 
 //////////////////////////////
@@ -353,111 +354,111 @@ enum RespondentStatus {
 // QUOTA MANAGEMENT MODELS
 //////////////////////////////
 
-model SurveyQuota {
-  id       String @id @default(uuid())
-  surveyId String @unique
-  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+// model SurveyQuota {
+//   id       String @id @default(uuid())
+//   surveyId String @unique
+//   survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  total_target   Int
-  completed_url  String?
-  terminated_url String?
-  quota_full_url String?
+//   total_target   Int
+//   completed_url  String?
+//   terminated_url String?
+//   quota_full_url String?
 
-  total_completed  Int @default(0)
-  total_terminated Int @default(0)
-  total_quota_full Int @default(0)
+//   total_completed  Int @default(0)
+//   total_terminated Int @default(0)
+//   total_quota_full Int @default(0)
 
-  is_active  Boolean  @default(true)
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+//   is_active  Boolean  @default(true)
+//   created_at DateTime @default(now())
+//   updated_at DateTime @updatedAt
 
-  // Quota groups
-  age_quotas          AgeQuota[]
-  gender_quotas       GenderQuota[]
-  location_quotas     LocationQuota[]
-  category_quotas     CategoryQuota[]
-  respondents         QuotaRespondent[]
-  screening_questions ScreeningQuestion[]
-}
+//   // Quota groups
+//   age_quotas          AgeQuota[]
+//   gender_quotas       GenderQuota[]
+//   location_quotas     LocationQuota[]
+//   category_quotas     CategoryQuota[]
+//   respondents         QuotaRespondent[]
+//   screening_questions ScreeningQuestion[]
+// }
 
-model AgeQuota {
-  id            String      @id @default(uuid())
-  surveyQuotaId String
-  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+// model AgeQuota {
+//   id            String      @id @default(uuid())
+//   surveyQuotaId String
+//   surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  min_age           Int
-  max_age           Int
-  quota_type        QuotaType @default(COUNT)
-  target_count      Int?
-  target_percentage Float?
-  current_count     Int       @default(0)
-  is_active         Boolean   @default(true)
+//   min_age           Int
+//   max_age           Int
+//   quota_type        QuotaType @default(COUNT)
+//   target_count      Int?
+//   target_percentage Float?
+//   current_count     Int       @default(0)
+//   is_active         Boolean   @default(true)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+//   created_at DateTime @default(now())
+//   updated_at DateTime @updatedAt
 
-  @@index([surveyQuotaId, min_age, max_age])
-}
+//   @@index([surveyQuotaId, min_age, max_age])
+// }
 
-model GenderQuota {
-  id            String      @id @default(uuid())
-  surveyQuotaId String
-  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+// model GenderQuota {
+//   id            String      @id @default(uuid())
+//   surveyQuotaId String
+//   surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  gender            Gender
-  quota_type        QuotaType @default(COUNT)
-  target_count      Int?
-  target_percentage Float?
-  current_count     Int       @default(0)
-  is_active         Boolean   @default(true)
+//   gender            Gender
+//   quota_type        QuotaType @default(COUNT)
+//   target_count      Int?
+//   target_percentage Float?
+//   current_count     Int       @default(0)
+//   is_active         Boolean   @default(true)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+//   created_at DateTime @default(now())
+//   updated_at DateTime @updatedAt
 
-  @@unique([surveyQuotaId, gender])
-}
+//   @@unique([surveyQuotaId, gender])
+// }
 
-model LocationQuota {
-  id            String      @id @default(uuid())
-  surveyQuotaId String
-  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+// model LocationQuota {
+//   id            String      @id @default(uuid())
+//   surveyQuotaId String
+//   surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  country     String?
-  state       String?
-  city        String?
-  postal_code String?
+//   country     String?
+//   state       String?
+//   city        String?
+//   postal_code String?
 
-  quota_type        QuotaType @default(COUNT)
-  target_count      Int?
-  target_percentage Float?
-  current_count     Int       @default(0)
-  is_active         Boolean   @default(true)
+//   quota_type        QuotaType @default(COUNT)
+//   target_count      Int?
+//   target_percentage Float?
+//   current_count     Int       @default(0)
+//   is_active         Boolean   @default(true)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+//   created_at DateTime @default(now())
+//   updated_at DateTime @updatedAt
 
-  @@index([surveyQuotaId, country, state, city])
-}
+//   @@index([surveyQuotaId, country, state, city])
+// }
 
-model CategoryQuota {
-  id            String      @id @default(uuid())
-  surveyQuotaId String
-  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+// model CategoryQuota {
+//   id            String      @id @default(uuid())
+//   surveyQuotaId String
+//   surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
 
-  surveyCategoryId String
-  surveyCategory   SurveyCategory @relation(fields: [surveyCategoryId], references: [id])
+//   surveyCategoryId String
+//   surveyCategory   SurveyCategory @relation(fields: [surveyCategoryId], references: [id])
 
-  quota_type        QuotaType @default(COUNT)
-  target_count      Int?
-  target_percentage Float?
-  current_count     Int       @default(0)
-  is_active         Boolean   @default(true)
+//   quota_type        QuotaType @default(COUNT)
+//   target_count      Int?
+//   target_percentage Float?
+//   current_count     Int       @default(0)
+//   is_active         Boolean   @default(true)
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+//   created_at DateTime @default(now())
+//   updated_at DateTime @updatedAt
 
-  @@unique([surveyQuotaId, surveyCategoryId])
-}
+//   @@unique([surveyQuotaId, surveyCategoryId])
+// }
 
 model QuotaRespondent {
   id            String      @id @default(uuid())
@@ -680,3 +681,131 @@ model VendorQuestionCategory {
 
   created_at DateTime @default(now())
 }
+
+////////////////////////////// SCREENING QUESTIONS //////////////////////////////
+
+enum DataType {
+  STRING
+  NUMBER
+  ARRAY
+}
+
+enum  QuestionSource {
+  VENDOR
+  SYSTEM
+  CUSTOM
+}
+
+enum QuotaLogic {
+  AND
+  OR
+}
+
+enum ConditionOperator {
+  EQUALS
+  IN
+  NOT_IN
+  BETWEEN
+  GT
+  LT
+}
+
+
+model ScreeningQuestionDefinition {
+  id            String @id @default(uuid())
+
+  country_code  String @default("IN") // ISO-2 e.g. "US", "IN"
+  language      String @default("ENGLISH")// e.g. "ENGLISH", "HINDI"
+
+  question_key  String  // AGE, GENDER, ZIP, Q_CUSTOM_1
+  question_text String
+  question_type String  // SINGLE, MULTI, RANGE, NUMBER
+  data_type     DataType  // STRING, NUMBER, ARRAY
+
+  source        QuestionSource  // VENDOR | SYSTEM | CUSTOM
+  vendorId             String?
+  vendor_question_id   String?
+
+  primary_vendor_category_id   String?
+  primary_vendor_category_name String?
+  categories_meta Json?
+
+  options       ScreenQuestionOption[]
+
+  is_active     Boolean @default(true)
+
+  created_at DateTime @default(now())
+
+  survey_question_configs SurveyQuestionConfig[]
+
+  // ✅ For SYSTEM / CUSTOM questions
+  @@unique([question_key, country_code, language],name: "system_question_unique")
+
+  // ✅ For VENDOR questions (vendorId must be non-null for these)
+  @@unique([vendorId, question_key, country_code, language],name: "vendor_question_unique")
+}
+
+model ScreenQuestionOption {
+  id            String @id @default(uuid())
+  screeningQuestionId    String
+  screeningQuestion      ScreeningQuestionDefinition @relation(fields: [screeningQuestionId], references: [id], onDelete: Cascade)
+
+  option_text   String
+  vendor_option_id    String?
+
+  order_index   Int
+}
+
+model SurveyQuestionConfig {
+  id            String @id @default(uuid())
+  surveyId      String
+  survey        Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  screeningQuestionId    String
+  screeningQuestion      ScreeningQuestionDefinition @relation(fields: [screeningQuestionId], references: [id])
+
+  is_required   Boolean @default(true)
+  is_screening  Boolean @default(true)
+
+  terminate_on  Json?   // ["AGE<18", "OPTION=OTHER"]
+  qualify_on    Json?   // explicit allow rules (optional)
+
+  order_index   Int
+
+  @@unique([surveyId, screeningQuestionId])
+}
+
+model SurveyQuota {
+  id        String @id @default(uuid())
+  surveyId String @unique
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  name String
+  logic QuotaLogic @default(AND)
+
+  target_count      Int?
+  target_percentage Float?
+
+  current_count Int @default(0)
+  is_active Boolean @default(true)
+
+  conditions SurveyQuotaCondition[]
+
+  respondents QuotaRespondent[]
+  screening_questions ScreeningQuestion[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model SurveyQuotaCondition {
+  id        String @id @default(uuid())
+  quotaId  String
+  quota    SurveyQuota @relation(fields: [quotaId], references: [id], onDelete: Cascade)
+
+  question_key String   // references QuestionDefinition.question_key
+  operator ConditionOperator
+  value Json
+}
+
+
