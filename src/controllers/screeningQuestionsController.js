@@ -1,9 +1,10 @@
 import prisma from "../config/db.js";
+import { ingestInnovateMRQuestions_v2 } from "../utils/vendorUtils.js";
 
 export const getScreeningQuestions = async (req, res) => {
   try {
     const {
-      source = "CUSTOM",
+      source = "SYSTEM",
       vendorId,
       countryCode = "IN",
       language = "ENGLISH",
@@ -17,12 +18,50 @@ export const getScreeningQuestions = async (req, res) => {
     if (source === "VENDOR") {
       findQuestionsWhere.vendorId = vendorId;
     }
+    console.log(
+      ">>>>> the value of the FIND QUESTIONS WHERE is : ",
+      findQuestionsWhere
+    );
 
     const questions = await prisma.screeningQuestionDefinition.findMany({
       where: findQuestionsWhere,
       include: { options: true },
     });
     console.log(">>>>> the value of the SCREENING QUESTIONS is : ", questions);
+
+    if (questions.length === 0) {
+      if (source === "VENDOR") {
+        const apiConfig = await prisma.vendorApiConfig.findFirst({
+          where: { vendorId, is_default: true },
+          select: { id: true },
+        });
+        console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
+        if (!apiConfig) {
+          return res.status(404).json({ message: "API Config not found" });
+        }
+
+        const fetchQuestionsFromVendor = await ingestInnovateMRQuestions_v2({
+          vendorId,
+          apiConfigId: apiConfig.id,
+          countryCode,
+          language,
+        });
+        console.log(
+          ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
+          fetchQuestionsFromVendor
+        );
+
+        const questions = await prisma.screeningQuestionDefinition.findMany({
+          where: findQuestionsWhere,
+          include: { options: true },
+        });
+
+        return res.json({
+          message: "Screening Questions retrieved successfully",
+          data: questions,
+        });
+      }
+    }
 
     return res.json({
       message: "Screening Questions retrieved successfully",
@@ -42,13 +81,11 @@ async function resetQuestionOptions(tx, questionId, options) {
   if (!Array.isArray(options) || options.length === 0) return;
 
   await tx.screenQuestionOption.createMany({
-    data: options
-      .filter((o) => typeof o === "string" && o.trim())
-      .map((text, index) => ({
-        screeningQuestionId: questionId,
-        option_text: text.trim(),
-        order_index: index,
-      })),
+    data: options.map((option, index) => ({
+      screeningQuestionId: question.id,
+      option_text: option.option_text.trim(),
+      order_index: option.order_index,
+    })),
   });
 }
 

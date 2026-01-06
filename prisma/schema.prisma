@@ -696,21 +696,6 @@ enum  QuestionSource {
   CUSTOM
 }
 
-enum QuotaLogic {
-  AND
-  OR
-}
-
-enum ConditionOperator {
-  EQUALS
-  IN
-  NOT_IN
-  BETWEEN
-  GT
-  LT
-}
-
-
 model ScreeningQuestionDefinition {
   id            String @id @default(uuid())
 
@@ -731,6 +716,7 @@ model ScreeningQuestionDefinition {
   categories_meta Json?
 
   options       ScreenQuestionOption[]
+  quota_options SurveyQuotaOption[] @relation("QuotaOptionToQuestion")
 
   is_active     Boolean @default(true)
 
@@ -754,6 +740,8 @@ model ScreenQuestionOption {
   vendor_option_id    String?
 
   order_index   Int
+
+  quota_options SurveyQuotaOption[] @relation("QuotaOptionToScreenOption")
 }
 
 model SurveyQuestionConfig {
@@ -780,32 +768,35 @@ model SurveyQuota {
   surveyId String @unique
   survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
 
-  name String
-  logic QuotaLogic @default(AND)
-
   target_count      Int?
   target_percentage Float?
 
   current_count Int @default(0)
   is_active Boolean @default(true)
 
-  conditions SurveyQuotaCondition[]
-
   respondents QuotaRespondent[]
   screening_questions ScreeningQuestion[]
+  quota_options SurveyQuotaOption[]
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 }
 
-model SurveyQuotaCondition {
-  id        String @id @default(uuid())
-  quotaId  String
-  quota    SurveyQuota @relation(fields: [quotaId], references: [id], onDelete: Cascade)
+model SurveyQuotaOption {
+  id              String @id @default(uuid())
+  quotaId         String
+  quota           SurveyQuota @relation(fields: [quotaId], references: [id], onDelete: Cascade)
 
-  question_key String   // references QuestionDefinition.question_key
-  operator ConditionOperator
-  value Json
+  screeningQuestionId      String   // ScreeningQuestionDefinition.id
+  screeningQuestion   ScreeningQuestionDefinition @relation("QuotaOptionToQuestion", fields: [screeningQuestionId], references: [id])
+  screeningOptionId        String   // ScreeningQuestionOption.id
+  screeningOption     ScreenQuestionOption @relation("QuotaOptionToScreenOption", fields: [screeningOptionId], references: [id])
+
+  target_count     Int
+  current_count    Int @default(0)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([quotaId, screeningQuestionId, screeningOptionId])
 }
-
-
