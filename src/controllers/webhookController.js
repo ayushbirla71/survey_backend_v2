@@ -3,6 +3,7 @@ import { generateTokenHash } from "./shareController.js";
 export const innovateWebhook = async (req, res) => {
   try {
     const { surveyId } = req.params;
+    console.log(">>>>>> the value of the REQ.QUERY is : ", req.query);
     const { tk, pid } = req.query;
     console.log(">>>>> the value of the SURVEY ID is : ", surveyId);
     console.log(">>>>> the value of the TOKEN is : ", tk);
@@ -14,7 +15,7 @@ export const innovateWebhook = async (req, res) => {
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
     const existingToken = await prisma.shareToken.findFirst({
-      where: { vendor_respondent_id: tk + "_" + pid },
+      where: { vendor_respondent_id: tk + "_BR_" + pid },
     });
     console.log(
       ">>>>> the value of the EXISTING TOKEN in innovateWebhook is : ",
@@ -31,7 +32,7 @@ export const innovateWebhook = async (req, res) => {
 
     const token_hash = generateTokenHash();
     const token = await prisma.shareToken.create({
-      data: { surveyId, token_hash, vendor_respondent_id: tk + "_" + pid },
+      data: { surveyId, token_hash, vendor_respondent_id: tk + "_BR_" + pid },
     });
     if (!token)
       return res.status(500).json({ message: "Token creation failed" });

@@ -7,6 +7,7 @@ import {
   getSelectedVendorQuestions,
   getVendorById,
   getVendors,
+  redirectVendor,
   setDefaultAPIConfig,
   toggleVendor,
   updateAPIConfig,
@@ -22,6 +23,9 @@ router.get("/", getVendors);
 router.get("/:id", getVendorById);
 router.patch("/:id", updateVendor);
 router.patch("/:id/toggle", toggleVendor);
+
+// Vendor Redirect Routes
+router.post("/redirect", redirectVendor);
 
 // Vendor API Config Routes
 router.post("/:vendorId/api-configs", createApiConfig);
