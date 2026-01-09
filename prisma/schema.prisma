@@ -778,6 +778,10 @@ model SurveyQuota {
   screening_questions ScreeningQuestion[]
   quota_options SurveyQuotaOption[]
 
+  vendorId String?
+  country_code String @default("IN") // ISO-2 e.g. "US", "IN"
+  language String @default("ENGLISH")// e.g. "ENGLISH", "HINDI"
+
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 }

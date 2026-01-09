@@ -17,6 +17,8 @@ import {
   checkRespondentQuota,
   markRespondentCompleted,
   markRespondentTerminated,
+  updateQuota_v2,
+  getQuota_v2,
 } from "../controllers/quotaController.js";
 
 const router = express.Router();
@@ -103,5 +105,17 @@ router.post(
   markRespondentTerminated
 );
 
-export default router;
+router.post(
+  "/:surveyId/quota_v2",
+  protect,
+  // validateRequest(quotaConfigValidation),
+  updateQuota_v2
+);
 
+router.get(
+  "/:surveyId/quota_v2",
+  //  protect,
+  getQuota_v2
+);
+
+export default router;

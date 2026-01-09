@@ -1400,3 +1400,173 @@ export const markRespondentTerminated = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+//  *******************   QUOTA V2   ******************************
+
+const prepareInnovaeMRPayload = async (screening) => {
+  try {
+    console.log(
+      ">>>> the value of the SCREENING in prepareInnovaeMRPayload is : ",
+      screening
+    );
+  } catch (error) {
+    console.error("Prepare InnovateMR Payload Error:", error);
+    throw new Error("Failed to prepare InnovateMR payload.");
+  }
+};
+
+export const updateQuota_v2 = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    console.log(">>>>> the value  of the SURVEY ID is : ", surveyId);
+
+    console.log(">>>>> the value  of the REQUEST BODY is : ", req.body);
+    const { enabled, totalTarget, screening, vendorId, countryCode, language } =
+      req.body;
+
+    const filteredScreening = screening.map((q) => ({
+      questionId: q.questionId,
+      vendorQuestionId: q.vendorQuestionId,
+      optionTargets: q.optionTargets.filter((o) => o.target > 0),
+    }));
+    console.log(
+      ">>>>> the value  of the FILTERED SCREENING is : ",
+      filteredScreening
+    );
+    console.log(
+      ">>>>> the value  of the FILTERED SCREENING (OPTIONS) is : ",
+      filteredScreening[0].optionTargets
+    );
+
+    const survey = await prisma.survey.findFirst({
+      where: { id: surveyId },
+    });
+    console.log(">>>>> the value  of the SURVEY is : ", survey);
+    if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    await prisma.$transaction(async (tx) => {
+      const quota = await tx.surveyQuota.upsert({
+        where: { surveyId },
+        update: {
+          target_count: totalTarget,
+          is_active: enabled,
+          country_code: countryCode,
+          language,
+          ...(vendorId && { vendorId }), // only if present
+        },
+        create: {
+          surveyId,
+          target_count: totalTarget,
+          is_active: enabled,
+          current_count: 0,
+          country_code: countryCode,
+          language,
+          ...(vendorId && { vendorId }), // only if present
+        },
+      });
+      console.log(">>>>> the value  of the QUOTA is : ", quota);
+
+      const deleted = await tx.surveyQuotaOption.deleteMany({
+        where: { quotaId: quota.id },
+      });
+      console.log(">>>>> the value  of the DELETED is : ", deleted);
+
+      for (const q of filteredScreening) {
+        for (const opt of q.optionTargets) {
+          if (opt.target <= 0) continue;
+
+          await tx.surveyQuotaOption.create({
+            data: {
+              quotaId: quota.id,
+              screeningQuestionId: q.questionId,
+              screeningOptionId: opt.optionId,
+              target_count: opt.target,
+              current_count: 0,
+            },
+          });
+        }
+      }
+    });
+
+    // const innovateMRPayload = await prepareInnovaeMRPayload(filteredScreening);
+    // console.log(
+    //   ">>>>> the value  of the INNOVATE MR PAYLOAD is : ",
+    //   innovateMRPayload
+    // );
+
+    return res.json({ message: "Quota updated" });
+  } catch (error) {
+    console.error("Update Quota Error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getQuota_v2 = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    console.log(">>>>> the value  of the SURVEY ID is : ", surveyId);
+
+    const survey = await prisma.survey.findFirst({
+      where: { id: surveyId },
+    });
+    console.log(">>>>> the value  of the SURVEY is : ", survey);
+    if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    const quota = await prisma.surveyQuota.findUnique({
+      where: { surveyId },
+      include: { quota_options: true },
+    });
+    console.log(">>>>> the value  of the QUOTA is : ", quota);
+    if (!quota) return res.status(404).json({ message: "Quota not found" });
+
+    /**
+     * STEP 1: Group quota_options by screeningQuestionId
+     */
+    const questionMap = new Map();
+
+    quota.quota_options.forEach((option) => {
+      const questionId = option.screeningQuestionId;
+
+      if (!questionMap.has(questionId)) {
+        questionMap.set(questionId, {
+          questionId,
+          id: questionId,
+          optionTargets: [],
+        });
+      }
+
+      questionMap.get(questionId).optionTargets.push({
+        optionId: option.screeningOptionId,
+        option_id: option.screeningOptionId,
+        target: option.target_count,
+      });
+    });
+
+    /**
+     * STEP 2: Convert map → array
+     */
+    const screeningquestions = Array.from(questionMap.values());
+
+    /**
+     * STEP 3: Final formatted response
+     */
+    const formattedQuota = {
+      id: quota.id,
+      surveyId: quota.surveyId,
+      totaltarget: quota.target_count,
+      country_code: quota.country_code,
+      language: quota.language,
+      vendorId: quota.vendorId,
+      screeningquestions,
+    };
+
+    return res.json(formattedQuota);
+  } catch (error) {
+    console.error("Get Quota Error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
