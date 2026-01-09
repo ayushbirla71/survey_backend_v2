@@ -775,3 +775,37 @@ export const updateVendorJobStatus = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+export const redirectVendor = async (req, res) => {
+  try {
+    const { shareTokenId, isCompleted } = req.query;
+    console.log(">>>>> the value of the shareTokenId is : ", shareTokenId);
+    console.log(">>>>> the value of the isCompleted is : ", isCompleted);
+
+    const shareToken = await prisma.shareToken.findFirst({
+      where: { token_hash: shareTokenId },
+    });
+    console.log(">>>>> the value of the shareToken is : ", shareToken);
+    if (!shareToken) return res.status(400).json({ message: "Invalid Token." });
+
+    const vendor_token = shareToken.vendor_respondent_id.split("_BR_")[0];
+    console.log(">>>>> the value of the VENDOR TOKEN is : ", vendor_token);
+
+    const redirectUrl =
+      (isCompleted
+        ? process.env.INNOVATE_MR_SUCCESS_REDIRECT_URL
+        : process.env.INNOVATE_MR_FAILURE_REDIRECT_URL) + vendor_token;
+    console.log(">>>>> the value of the REDIRECT URL is : ", redirectUrl);
+
+    const redirectResponse = await axios.get(redirectUrl);
+    console.log(
+      ">>>>> the value of the redirectResponse is : ",
+      redirectResponse.data
+    );
+
+    return res.json({ message: "Redirecting to Vendor", data: redirectUrl });
+  } catch (error) {
+    console.error("Mark Vendor Respondent Completed Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};

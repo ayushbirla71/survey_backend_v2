@@ -8,6 +8,7 @@ import {
   getSelectedVendorQuestions_v2,
   getVendorById,
   getVendors,
+  redirectVendor,
   setDefaultAPIConfig,
   toggleVendor,
   updateAPIConfig,
@@ -20,6 +21,9 @@ const router = express.Router();
 // Vendor Routes
 router.post("/", createVendor);
 router.get("/", getVendors);
+
+// Vendor Redirect Routes
+router.post("/redirect", redirectVendor);
 
 // Vendor API Config Routes
 router.post("/:vendorId/api-configs", createApiConfig);
