@@ -1403,7 +1403,7 @@ export const markRespondentTerminated = async (req, res) => {
 
 //  *******************   QUOTA V2   ******************************
 
-const prepareInnovaeMRPayload = async (screening) => {
+const prepareInnovaeMRTargetPayload = async (screening) => {
   try {
     console.log(
       ">>>> the value of the SCREENING in prepareInnovaeMRPayload is : ",
@@ -1412,6 +1412,180 @@ const prepareInnovaeMRPayload = async (screening) => {
   } catch (error) {
     console.error("Prepare InnovateMR Payload Error:", error);
     throw new Error("Failed to prepare InnovateMR payload.");
+  }
+};
+
+const addSurveyToInnovaeMR = async (
+  survey,
+  vendorId,
+  totalTarget,
+  screening
+) => {
+  try {
+    console.log(
+      ">>>> the value of the SURVEY in addSurveyToInnovaeMR is : ",
+      survey
+    );
+    console.log(
+      ">>>> the value of the VENDOR ID in addSurveyToInnovaeMR is : ",
+      vendorId
+    );
+    console.log(
+      ">>>> the value of the TOTAL TARGET in addSurveyToInnovaeMR is : ",
+      totalTarget
+    );
+    console.log(
+      ">>>> the value of the SCREENING in addSurveyToInnovaeMR is : ",
+      screening
+    );
+
+    const vendorDetails = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      include: {
+        api_configs: { where: { is_default: true, is_active: true } },
+      },
+    });
+    console.log(
+      ">>>> the value of the VENDOR DETAILS in addSurveyToInnovaeMR is : ",
+      vendorDetails
+    );
+    if (!vendorDetails) {
+      throw new Error("Vendor not found");
+    }
+    if (vendorDetails.api_configs.length === 0) {
+      throw new Error("No active API config found");
+    }
+
+    const apiConfig =
+      vendorDetails.api_configs[vendorDetails.api_configs.length - 1];
+    const { id: apiConfigId, base_url, credentials } = apiConfig;
+
+    // Check if JOB already created on VENDOR side
+    const isSurveyVendorConfigExist = await prisma.surveyVendorConfig.findFirst(
+      {
+        where: { surveyId: survey.id, vendorId: vendorDetails.id },
+      }
+    );
+    console.log(
+      ">>>> the value of the isSurveyVendorConfigExist in addSurveyToInnovaeMR is : ",
+      isSurveyVendorConfigExist
+    );
+
+    let job_id = isSurveyVendorConfigExist
+      ? JSON.parse(isSurveyVendorConfigExist.vendor_survey_id)
+      : null;
+    console.log(
+      ">>>> the value of the JOB ID in addSurveyToInnovaeMR is : ",
+      job_id
+    );
+
+    let surveyVendorConfigId = isSurveyVendorConfigExist
+      ? isSurveyVendorConfigExist.id
+      : null;
+    console.log(
+      ">>>> the value of the surveyVendorConfigId in addSurveyToInnovaeMR is : ",
+      surveyVendorConfigId
+    );
+
+    if (!job_id) {
+      const createJobResponse = await axios.post(
+        `${base_url}/pega/job`,
+        {
+          Name: survey.title,
+          Status: 0,
+          Category: 1, // it must me number from 1 to 43
+        },
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        }
+      );
+      console.log(
+        ">>>>> the value of the createJobResponse from INNOVATE MR is : ",
+        createJobResponse.data
+      );
+      const validatedCreateJobResponse = validateInnovateMRResponse(
+        createJobResponse,
+        "Create Job"
+      );
+      console.log(
+        ">>>>> the value of the validatedCreateJobResponse from INNOVATE MR is : ",
+        validatedCreateJobResponse
+      );
+
+      job_id = createJobResponse.data?.job?.Id;
+      console.log(">>>>> the value of the JOB ID is : ", job_id);
+
+      const createSurveyVendorConfig = await prisma.surveyVendorConfig.create({
+        data: {
+          surveyId: survey.id,
+          vendorId: vendorDetails.id,
+          api_config_id: apiConfigId,
+          vendor_survey_id: JSON.stringify(job_id),
+          status: "CREATED",
+        },
+      });
+      console.log(
+        ">>>>> the value of the createSurveyVendorConfig is : ",
+        createSurveyVendorConfig
+      );
+
+      surveyVendorConfigId = createSurveyVendorConfig.id;
+    }
+
+    // Adding GROUP to the JOB
+    const createGroupResponse = await axios.post(
+      `${base_url}/pega/jobs/${job_id}/group`,
+      {
+        Name: survey.title + " - Group",
+        N: totalTarget,
+        IncidenceRate: 80,
+        LengthOfInterview: 2,
+        LiveSurveyUrl:
+          process.env.BACKEND_URL +
+          `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+        Target: { Country: "India", Languages: "ENGLISH" },
+      },
+      {
+        headers: {
+          "x-access-token": `${credentials.token}`,
+        },
+      }
+    );
+    console.log(
+      ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
+      createGroupResponse.data
+    );
+    const validatedCreateGroupResponse = validateInnovateMRResponse(
+      createGroupResponse,
+      "Create Group"
+    );
+    console.log(
+      ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
+      validatedCreateGroupResponse
+    );
+
+    const group_id = createGroupResponse.data?.group?.Id;
+    console.log(">>>>> the value of the GROUP ID is : ", group_id);
+
+    const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
+      where: { id: surveyVendorConfigId },
+      data: { vendor_group_id: JSON.stringify(group_id) },
+    });
+    console.log(
+      ">>>>> the value of the updateSurveyVendorConfig is : ",
+      updateSurveyVendorConfig
+    );
+
+    const vendorTargetPayload = await prepareInnovaeMRTargetPayload(screening);
+    console.log(
+      ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
+      vendorTargetPayload
+    );
+  } catch (error) {
+    console.error("Add Survey to InnovateMR Error:", error);
+    throw new Error("Failed to add survey to InnovateMR.");
   }
 };
 
@@ -1488,11 +1662,18 @@ export const updateQuota_v2 = async (req, res) => {
       }
     });
 
-    // const innovateMRPayload = await prepareInnovaeMRPayload(filteredScreening);
-    // console.log(
-    //   ">>>>> the value  of the INNOVATE MR PAYLOAD is : ",
-    //   innovateMRPayload
-    // );
+    // if (survey.survey_send_by === "VENDOR") {
+    //   const innovateMrResponse = await addSurveyToInnovaeMR(
+    //     survey,
+    //     vendorId,
+    //     totalTarget,
+    //     filteredScreening
+    //   );
+    //   console.log(
+    //     ">>>>> the value  of the INNOVATE MR RESPONSE is : ",
+    //     innovateMrResponse
+    //   );
+    // }
 
     return res.json({ message: "Quota updated" });
   } catch (error) {
@@ -1565,6 +1746,275 @@ export const getQuota_v2 = async (req, res) => {
     return res.json(formattedQuota);
   } catch (error) {
     console.error("Get Quota Error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getFullScreeningQuestionsBasedOnQuota = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    console.log(">>>>> the value  of the SURVEY ID is : ", surveyId);
+
+    const survey = await prisma.survey.findFirst({
+      where: { id: surveyId },
+    });
+    console.log(">>>>> the value  of the SURVEY is : ", survey);
+    if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    const quota = await prisma.surveyQuota.findUnique({
+      where: { surveyId },
+      include: { quota_options: true },
+    });
+    console.log(">>>>> the value  of the QUOTA is : ", quota);
+    if (!quota) return res.status(404).json({ message: "Quota not found" });
+
+    const questions = await prisma.screeningQuestionDefinition.findMany({
+      where: {
+        id: { in: quota.quota_options.map((o) => o.screeningQuestionId) },
+      },
+      // include: { options: true },
+      select: {
+        id: true,
+        question_text: true,
+        question_type: true,
+        vendor_question_id: true,
+        options: {
+          select: {
+            id: true,
+            option_text: true,
+            vendor_option_id: true,
+            order_index: true,
+          },
+        },
+      },
+    });
+    console.log(">>>>> the value  of the QUESTIONS is : ", questions);
+
+    return res.json({
+      message: "Questions retrieved successfully",
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Get Full Screening Questions Error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+async function failRespondent(quotaId, vendorId, status, full = false) {
+  return prisma.$transaction(async (tx) => {
+    const r = await tx.quotaRespondent.create({
+      data: { surveyQuotaId: quotaId, vendor_respondent_id: vendorId, status },
+    });
+
+    await tx.surveyQuota.update({
+      where: { id: quotaId },
+      data: full
+        ? { quota_full_count: { increment: 1 } }
+        : { terminated_count: { increment: 1 } },
+    });
+
+    return r;
+  });
+}
+
+export const checkRespondentQuota_v2 = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    console.log(">>>>> the value  of the SURVEY ID is : ", surveyId);
+
+    const { vendor_respondent_id, screeningAnswers } = req.body;
+    console.log(">>>>> the value  of the REQUEST BODY is : ", req.body);
+
+    const quota = await prisma.surveyQuota.findUnique({
+      where: { surveyId },
+      include: { quota_options: true, survey: true },
+    });
+
+    if (!quota || !quota.survey) {
+      return res.status(404).json({
+        qualified: false,
+        status: "SURVEY_NOT_FOUND",
+        message: "Survey not found",
+      });
+    }
+
+    // console.log(">>>>> the value  of the QUOTA is : ", quota);
+    if (!quota.is_active || quota.target_count <= 0) {
+      const respondent = await failRespondent(
+        quota.id,
+        vendor_respondent_id,
+        "TERMINATED"
+      );
+
+      return res.status(404).json({
+        qualified: false,
+        status: "QUOTA_INACTIVE",
+        message: "Quota is not active",
+        respondent_id: respondent.id,
+      });
+    }
+    if (quota.current_count >= quota.target_count) {
+      const respondent = await failRespondent(
+        quota.id,
+        vendor_respondent_id,
+        "QUOTA_FULL",
+        true
+      );
+
+      return res.status(200).json({
+        qualified: false,
+        status: "QUOTA_FULL",
+        message: "Quota is full",
+        respondent_id: respondent.id,
+      });
+    }
+
+    // Build option map
+    const quotaOptionMap = new Map(
+      quota.quota_options.map((o) => [
+        `${o.screeningQuestionId}_${o.screeningOptionId}`,
+        o,
+      ])
+    );
+
+    // Evaluate rules without mutating
+    for (const ans of screeningAnswers) {
+      const key = `${ans.screeningQuestionId}_${ans.screeningOptionId}`;
+      const qOpt = quotaOptionMap.get(key);
+
+      if (!qOpt) {
+        const respondent = await failRespondent(
+          quota.id,
+          vendor_respondent_id,
+          "TERMINATED"
+        );
+        return res.status(200).json({
+          qualified: false,
+          status: "OPTION_NOT_ALLOWED",
+          message: "Screening disqualified",
+          respondent_id: respondent.id,
+        });
+      }
+
+      if (qOpt.current_count >= qOpt.target_count) {
+        const respondent = await failRespondent(
+          quota.id,
+          vendor_respondent_id,
+          "QUOTA_FULL",
+          true
+        );
+        return res.status(200).json({
+          qualified: false,
+          status: "QUOTA_FULL",
+          message: "Option quota full",
+          respondent_id: respondent.id,
+        });
+      }
+    }
+
+    // Commit qualification atomically
+    const respondent = await prisma.$transaction(async (tx) => {
+      const r = await tx.quotaRespondent.create({
+        data: {
+          surveyQuotaId: quota.id,
+          vendor_respondent_id,
+          answers: screeningAnswers,
+          status: "QUALIFIED",
+        },
+      });
+
+      await tx.surveyQuota.update({
+        where: { id: quota.id },
+        data: { qualified_count: { increment: 1 } },
+      });
+
+      return r;
+    });
+
+    return res.status(200).json({
+      qualified: true,
+      status: "QUALIFIED",
+      message: "Qualified",
+      respondent_id: respondent.id,
+    });
+  } catch (error) {
+    console.error("Check Respondent Quota Error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+export const markRespondentCompleted_v2 = async (req, res) => {
+  try {
+    const { surveyId } = req.params;
+    const { respondent_id, response_id } = req.body;
+
+    const respondent = await prisma.quotaRespondent.findUnique({
+      where: { id: respondent_id },
+      include: { surveyQuota: true },
+    });
+
+    if (!respondent) {
+      return res.status(404).json({ message: "Respondent not found" });
+    }
+
+    if (respondent.surveyQuota.surveyId !== surveyId) {
+      return res
+        .status(400)
+        .json({ message: "Respondent does not belong to this survey" });
+    }
+
+    if (respondent.status === "COMPLETED") {
+      return res
+        .status(400)
+        .json({ message: "Respondent already marked as completed" });
+    }
+
+    // Update respondent and quota counts in transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Update respondent status
+      const updatedRespondent = await tx.quotaRespondent.update({
+        where: { id: respondent_id },
+        data: {
+          status: "COMPLETED",
+          responseId: response_id,
+        },
+      });
+
+      // Update survey quota total
+      await tx.surveyQuota.update({
+        where: { id: respondent.surveyQuotaId },
+        data: { current_count: { increment: 1 } },
+      });
+
+      // Update option counts
+      await tx.surveyQuotaOption.updateMany({
+        where: {
+          quotaId: respondent.surveyQuotaId,
+          screeningQuestionId: {
+            in: respondent.answers.map((a) => a.screeningQuestionId),
+          },
+          screeningOptionId: {
+            in: respondent.answers.map((a) => a.screeningOptionId),
+          },
+        },
+        data: { current_count: { increment: 1 } },
+      });
+
+      return updatedRespondent;
+    });
+
+    return res.json({
+      message: "Respondent marked as completed",
+      respondent: result,
+    });
+  } catch (error) {
+    console.error("Mark completed error:", error);
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });

@@ -460,32 +460,6 @@ enum RespondentStatus {
 //   @@unique([surveyQuotaId, surveyCategoryId])
 // }
 
-model QuotaRespondent {
-  id            String      @id @default(uuid())
-  surveyQuotaId String
-  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
-
-  vendor_respondent_id String?
-  age                  Int?
-  gender               Gender?
-  country              String?
-  state                String?
-  city                 String?
-  surveyCategoryId     String?
-
-  status              RespondentStatus @default(QUALIFIED)
-  redirect_url_called String?
-  redirect_called_at  DateTime?
-
-  responseId String? @unique
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  @@index([surveyQuotaId, status])
-  @@index([vendor_respondent_id])
-}
-
 //////////////////////////////
 // SCREENING QUESTIONS
 //////////////////////////////
@@ -772,6 +746,9 @@ model SurveyQuota {
   target_percentage Float?
 
   current_count Int @default(0)
+  qualified_count Int @default(0)
+  terminated_count Int @default(0)
+  quota_full_count Int @default(0)
   is_active Boolean @default(true)
 
   respondents QuotaRespondent[]
@@ -803,4 +780,32 @@ model SurveyQuotaOption {
   updated_at DateTime @updatedAt
 
   @@unique([quotaId, screeningQuestionId, screeningOptionId])
+}
+
+model QuotaRespondent {
+  id            String      @id @default(uuid())
+  surveyQuotaId String
+  surveyQuota   SurveyQuota @relation(fields: [surveyQuotaId], references: [id], onDelete: Cascade)
+
+  answers Json?
+
+  vendor_respondent_id String?
+  age                  Int?
+  gender               Gender?
+  country              String?
+  state                String?
+  city                 String?
+  surveyCategoryId     String?
+
+  status              RespondentStatus @default(QUALIFIED)
+  redirect_url_called String?
+  redirect_called_at  DateTime?
+
+  responseId String? @unique
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([surveyQuotaId, status])
+  @@index([vendor_respondent_id])
 }

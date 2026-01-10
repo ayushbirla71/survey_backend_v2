@@ -82,7 +82,7 @@ async function resetQuestionOptions(tx, questionId, options) {
 
   await tx.screenQuestionOption.createMany({
     data: options.map((option, index) => ({
-      screeningQuestionId: question.id,
+      screeningQuestionId: questionId,
       option_text: option.option_text.trim(),
       order_index: option.order_index,
     })),

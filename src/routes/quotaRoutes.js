@@ -19,6 +19,9 @@ import {
   markRespondentTerminated,
   updateQuota_v2,
   getQuota_v2,
+  getFullScreeningQuestionsBasedOnQuota,
+  checkRespondentQuota_v2,
+  markRespondentCompleted_v2,
 } from "../controllers/quotaController.js";
 
 const router = express.Router();
@@ -116,6 +119,24 @@ router.get(
   "/:surveyId/quota_v2",
   //  protect,
   getQuota_v2
+);
+
+router.get(
+  "/:surveyId/quota-screening-questions",
+  //  protect,
+  getFullScreeningQuestionsBasedOnQuota
+);
+
+router.post(
+  "/:surveyId/check_v2",
+  // validateRequest(checkRespondentValidation),
+  checkRespondentQuota_v2
+);
+
+router.post(
+  "/:surveyId/complete_v2",
+  validateRequest(markRespondentValidation),
+  markRespondentCompleted_v2
 );
 
 export default router;
