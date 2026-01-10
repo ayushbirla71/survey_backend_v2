@@ -697,6 +697,7 @@ model ScreeningQuestionDefinition {
   created_at DateTime @default(now())
 
   survey_question_configs SurveyQuestionConfig[]
+  quota_buckets  SurveyQuotaBucket[]
 
   // ✅ For SYSTEM / CUSTOM questions
   @@unique([question_key, country_code, language],name: "system_question_unique")
@@ -754,6 +755,7 @@ model SurveyQuota {
   respondents QuotaRespondent[]
   screening_questions ScreeningQuestion[]
   quota_options SurveyQuotaOption[]
+  quota_buckets  SurveyQuotaBucket[]
 
   vendorId String?
   country_code String @default("IN") // ISO-2 e.g. "US", "IN"
@@ -781,6 +783,40 @@ model SurveyQuotaOption {
 
   @@unique([quotaId, screeningQuestionId, screeningOptionId])
 }
+
+enum QuotaOperator {
+  EQ          // equals
+  IN          // value in list
+  BETWEEN     // numeric range
+  GTE
+  LTE
+  INTERSECTS  // array overlaps list
+  REGEX       // text pattern (optional)
+}
+
+model SurveyQuotaBucket {
+  id String @id @default(uuid())
+
+  quotaId String
+  quota   SurveyQuota @relation(fields: [quotaId], references: [id], onDelete: Cascade)
+
+  screeningQuestionId String
+  screeningQuestion   ScreeningQuestionDefinition @relation(fields: [screeningQuestionId], references: [id])
+
+  label String?
+  operator QuotaOperator
+  value Json              // {min:18,max:24} OR ["132001","110001"] OR "^(doctor|nurse)$"
+
+  target_count  Int
+  current_count Int @default(0)
+  is_active Boolean @default(true)
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([quotaId, screeningQuestionId])
+}
+
 
 model QuotaRespondent {
   id            String      @id @default(uuid())

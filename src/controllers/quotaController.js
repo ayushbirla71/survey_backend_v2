@@ -1601,7 +1601,8 @@ export const updateQuota_v2 = async (req, res) => {
     const filteredScreening = screening.map((q) => ({
       questionId: q.questionId,
       vendorQuestionId: q.vendorQuestionId,
-      optionTargets: q.optionTargets.filter((o) => o.target > 0),
+      optionTargets: (q.optionTargets ?? []).filter((o) => o.target > 0),
+      buckets: (q.buckets ?? []).filter((b) => b.target > 0),
     }));
     console.log(
       ">>>>> the value  of the FILTERED SCREENING is : ",
@@ -1640,10 +1641,14 @@ export const updateQuota_v2 = async (req, res) => {
       });
       console.log(">>>>> the value  of the QUOTA is : ", quota);
 
-      const deleted = await tx.surveyQuotaOption.deleteMany({
+      const deletedOptions = await tx.surveyQuotaOption.deleteMany({
         where: { quotaId: quota.id },
       });
-      console.log(">>>>> the value  of the DELETED is : ", deleted);
+      console.log(
+        ">>>>> the value  of the DELETED OPTIONS is : ",
+        deletedOptions
+      );
+      await tx.surveyQuotaBucket.deleteMany({ where: { quotaId: quota.id } });
 
       for (const q of filteredScreening) {
         for (const opt of q.optionTargets) {
@@ -1656,6 +1661,21 @@ export const updateQuota_v2 = async (req, res) => {
               screeningOptionId: opt.optionId,
               target_count: opt.target,
               current_count: 0,
+            },
+          });
+        }
+
+        for (const b of q.buckets) {
+          await tx.surveyQuotaBucket.create({
+            data: {
+              quotaId: quota.id,
+              screeningQuestionId: q.questionId,
+              label: b.label ?? null,
+              operator: b.operator,
+              value: b.value,
+              target_count: b.target,
+              current_count: 0,
+              is_active: true,
             },
           });
         }
@@ -1697,7 +1717,7 @@ export const getQuota_v2 = async (req, res) => {
 
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
-      include: { quota_options: true },
+      include: { quota_options: true, quota_buckets: true },
     });
     console.log(">>>>> the value  of the QUOTA is : ", quota);
     if (!quota) return res.status(404).json({ message: "Quota not found" });
@@ -1715,6 +1735,7 @@ export const getQuota_v2 = async (req, res) => {
           questionId,
           id: questionId,
           optionTargets: [],
+          buckets: [],
         });
       }
 
@@ -1722,6 +1743,31 @@ export const getQuota_v2 = async (req, res) => {
         optionId: option.screeningOptionId,
         option_id: option.screeningOptionId,
         target: option.target_count,
+        current: option.current_count,
+      });
+    });
+
+    quota.quota_buckets.forEach((b) => {
+      const questionId = b.screeningQuestionId;
+
+      if (!questionMap.has(questionId)) {
+        questionMap.set(questionId, {
+          questionId,
+          id: questionId,
+          optionTargets: [],
+          buckets: [],
+        });
+      }
+
+      questionMap.get(questionId).buckets.push({
+        bucketId: b.id,
+        id: b.id,
+        label: b.label,
+        operator: b.operator,
+        value: b.value,
+        target: b.target_count,
+        current: b.current_count,
+        is_active: b.is_active,
       });
     });
 
@@ -1765,21 +1811,27 @@ export const getFullScreeningQuestionsBasedOnQuota = async (req, res) => {
 
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
-      include: { quota_options: true },
+      include: { quota_options: true, quota_buckets: true },
     });
     console.log(">>>>> the value  of the QUOTA is : ", quota);
     if (!quota) return res.status(404).json({ message: "Quota not found" });
 
+    // NEW: merge + dedupe questionIds from both sources
+    const questionIds = Array.from(
+      new Set([
+        ...quota.quota_options.map((o) => o.screeningQuestionId),
+        ...quota.quota_buckets.map((b) => b.screeningQuestionId),
+      ])
+    );
+
     const questions = await prisma.screeningQuestionDefinition.findMany({
-      where: {
-        id: { in: quota.quota_options.map((o) => o.screeningQuestionId) },
-      },
-      // include: { options: true },
+      where: { id: { in: questionIds } },
       select: {
         id: true,
         question_text: true,
         question_type: true,
         vendor_question_id: true,
+        data_type: true,
         options: {
           select: {
             id: true,
@@ -1821,6 +1873,24 @@ async function failRespondent(quotaId, vendorId, status, full = false) {
   });
 }
 
+function matchBucket(bucket, answerValue) {
+  const op = bucket.operator;
+  const v = bucket.value;
+
+  if (op === "BETWEEN")
+    return Number(answerValue) >= v.min && Number(answerValue) <= v.max;
+  if (op === "IN") return Array.isArray(v) && v.includes(String(answerValue));
+  if (op === "EQ") return String(answerValue) === String(v);
+  if (op === "GTE") return Number(answerValue) >= Number(v);
+  if (op === "LTE") return Number(answerValue) <= Number(v);
+  if (op === "INTERSECTS") {
+    if (!Array.isArray(answerValue) || !Array.isArray(v)) return false;
+    const set = new Set(answerValue.map(String));
+    return v.map(String).some((x) => set.has(x));
+  }
+  return false;
+}
+
 export const checkRespondentQuota_v2 = async (req, res) => {
   try {
     const { surveyId } = req.params;
@@ -1831,7 +1901,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
-      include: { quota_options: true, survey: true },
+      include: { quota_options: true, quota_buckets: true, survey: true },
     });
 
     if (!quota || !quota.survey) {
@@ -1881,12 +1951,58 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       ])
     );
 
+    const bucketsByQuestion = new Map();
+    for (const b of quota.quota_buckets) {
+      if (!bucketsByQuestion.has(b.screeningQuestionId))
+        bucketsByQuestion.set(b.screeningQuestionId, []);
+      bucketsByQuestion.get(b.screeningQuestionId).push(b);
+    }
+
+    const normalizedAnswers = [];
+
     // Evaluate rules without mutating
     for (const ans of screeningAnswers) {
-      const key = `${ans.screeningQuestionId}_${ans.screeningOptionId}`;
-      const qOpt = quotaOptionMap.get(key);
+      if (ans.screeningOptionId) {
+        const key = `${ans.screeningQuestionId}_${ans.screeningOptionId}`;
+        const qOpt = quotaOptionMap.get(key);
 
-      if (!qOpt) {
+        if (!qOpt) {
+          const respondent = await failRespondent(
+            quota.id,
+            vendor_respondent_id,
+            "TERMINATED"
+          );
+          return res.status(200).json({
+            qualified: false,
+            status: "OPTION_NOT_ALLOWED",
+            message: "Screening disqualified",
+            respondent_id: respondent.id,
+          });
+        }
+
+        if (qOpt.current_count >= qOpt.target_count) {
+          const respondent = await failRespondent(
+            quota.id,
+            vendor_respondent_id,
+            "QUOTA_FULL",
+            true
+          );
+          return res.status(200).json({
+            qualified: false,
+            status: "QUOTA_FULL",
+            message: "Option quota full",
+            respondent_id: respondent.id,
+          });
+        }
+
+        normalizedAnswers.push(ans);
+        continue;
+      }
+
+      const buckets = bucketsByQuestion.get(ans.screeningQuestionId) ?? [];
+      const matched = buckets.find((b) => matchBucket(b, ans.answerValue));
+
+      if (!matched) {
         const respondent = await failRespondent(
           quota.id,
           vendor_respondent_id,
@@ -1894,13 +2010,13 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         );
         return res.status(200).json({
           qualified: false,
-          status: "OPTION_NOT_ALLOWED",
+          status: "NO_BUCKET_MATCH",
           message: "Screening disqualified",
           respondent_id: respondent.id,
         });
       }
 
-      if (qOpt.current_count >= qOpt.target_count) {
+      if (matched.current_count >= matched.target_count) {
         const respondent = await failRespondent(
           quota.id,
           vendor_respondent_id,
@@ -1910,10 +2026,12 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         return res.status(200).json({
           qualified: false,
           status: "QUOTA_FULL",
-          message: "Option quota full",
+          message: "Open-ended bucket full",
           respondent_id: respondent.id,
         });
       }
+
+      normalizedAnswers.push({ ...ans, matchedBucketId: matched.id });
     }
 
     // Commit qualification atomically
@@ -1922,7 +2040,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         data: {
           surveyQuotaId: quota.id,
           vendor_respondent_id,
-          answers: screeningAnswers,
+          answers: normalizedAnswers,
           status: "QUALIFIED",
         },
       });
@@ -1949,10 +2067,37 @@ export const checkRespondentQuota_v2 = async (req, res) => {
   }
 };
 
+const redirectVendorFunction = async (shareTokenDetails, type) => {
+  try {
+    const vendor_token =
+      shareTokenDetails.vendor_respondent_id.split("_BR_")[0];
+    console.log(">>>>> the value of the VENDOR TOKEN is : ", vendor_token);
+
+    const redirectUrl =
+      (type == "COMPLETED"
+        ? process.env.INNOVATE_MR_SUCCESS_REDIRECT_URL
+        : type == "QUOTA_FULL"
+        ? process.env.INNOVATE_MR_QUOTA_FULL_REDIRECT_URL
+        : process.env.INNOVATE_MR_TERMINATE_REDIRECT_URL) + vendor_token;
+
+    console.log(">>>>> the value of the REDIRECT URL is : ", redirectUrl);
+
+    const redirectResponse = await axios.get(redirectUrl);
+    console.log(
+      ">>>>> the value of the redirectResponse is : ",
+      redirectResponse.data
+    );
+    return redirectResponse.data;
+  } catch (error) {
+    console.log("Error in redirectVendorFunction: ", error);
+    return error;
+  }
+};
+
 export const markRespondentCompleted_v2 = async (req, res) => {
   try {
     const { surveyId } = req.params;
-    const { respondent_id, response_id } = req.body;
+    const { respondent_id, response_id, token } = req.body;
 
     const respondent = await prisma.quotaRespondent.findUnique({
       where: { id: respondent_id },
@@ -1975,6 +2120,17 @@ export const markRespondentCompleted_v2 = async (req, res) => {
         .json({ message: "Respondent already marked as completed" });
     }
 
+    const answers = Array.isArray(respondent.answers) ? respondent.answers : [];
+
+    const optionPairs = answers
+      .filter((a) => a.screeningQuestionId && a.screeningOptionId)
+      .map((a) => ({
+        screeningQuestionId: a.screeningQuestionId,
+        screeningOptionId: a.screeningOptionId,
+      }));
+
+    const bucketIds = answers.map((a) => a.matchedBucketId).filter(Boolean);
+
     // Update respondent and quota counts in transaction
     const result = await prisma.$transaction(async (tx) => {
       // Update respondent status
@@ -1992,22 +2148,43 @@ export const markRespondentCompleted_v2 = async (req, res) => {
         data: { current_count: { increment: 1 } },
       });
 
-      // Update option counts
-      await tx.surveyQuotaOption.updateMany({
-        where: {
-          quotaId: respondent.surveyQuotaId,
-          screeningQuestionId: {
-            in: respondent.answers.map((a) => a.screeningQuestionId),
+      if (optionPairs.length) {
+        await tx.surveyQuotaOption.updateMany({
+          where: {
+            quotaId: respondent.surveyQuotaId,
+            OR: optionPairs,
           },
-          screeningOptionId: {
-            in: respondent.answers.map((a) => a.screeningOptionId),
+          data: { current_count: { increment: 1 } },
+        });
+      }
+
+      if (bucketIds.length) {
+        await tx.surveyQuotaBucket.updateMany({
+          where: {
+            quotaId: respondent.surveyQuotaId,
+            id: { in: bucketIds },
           },
-        },
-        data: { current_count: { increment: 1 } },
-      });
+          data: { current_count: { increment: 1 } },
+        });
+      }
 
       return updatedRespondent;
     });
+
+    const shareTokenDetails = await prisma.shareToken.findUnique({
+      where: { token_hash: token },
+      includes: { survey: true },
+    });
+    console.log(
+      ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
+      shareTokenDetails
+    );
+    if (!shareTokenDetails) {
+      return res.status(404).json({ message: "Invalid Share Token" });
+    }
+    if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
+      await redirectVendorFunction(shareTokenDetails, "COMPLETED");
+    }
 
     return res.json({
       message: "Respondent marked as completed",
@@ -2015,6 +2192,84 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     });
   } catch (error) {
     console.error("Mark completed error:", error);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
+
+export const markRespondentTerminated_v2 = async (req, res) => {
+  try {
+    const { shareToken, respondent_id } = req.query;
+    console.log(
+      ">>>>> the value of the QUERY in markRespondentTerminated_v2 is : ",
+      req.query
+    );
+
+    const shareTokenDetails = await prisma.shareToken.findUnique({
+      where: { token_hash: shareToken },
+      includes: { survey: true },
+    });
+    console.log(
+      ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
+      shareTokenDetails
+    );
+    if (!shareTokenDetails)
+      return res.status(404).json({ message: "Invalid Share Token" });
+
+    const respondent = await prisma.quotaRespondent.findUnique({
+      where: { id: respondent_id },
+      include: { surveyQuota: true },
+    });
+    console.log(
+      ">>>>> the value of the RESPONDENT in markRespondentTerminated_v2 is : ",
+      respondent
+    );
+    if (!respondent)
+      return res.status(404).json({ message: "Respondent not found" });
+
+    if (respondent.surveyQuota.surveyId !== shareTokenDetails.surveyId) {
+      return res
+        .status(400)
+        .json({ message: "Respondent does not belong to this survey" });
+    }
+    if (respondent.status === "TERMINATED") {
+      return res
+        .status(400)
+        .json({ message: "Respondent already marked as terminated" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedRespondent = await tx.quotaRespondent.update({
+        where: { id: respondent_id },
+        data: {
+          status: "TERMINATED",
+        },
+      });
+
+      await tx.surveyQuota.update({
+        where: { id: respondent.surveyQuotaId },
+        data: { total_terminated: { increment: 1 } },
+      });
+
+      return updatedRespondent;
+    });
+    console.log(
+      ">>>>> the value of the RESULT in markRespondentTerminated_v2 is : ",
+      result
+    );
+
+    // if SHARE TOKEN then have to redirect to the vendor Terminate URL
+    if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
+      await redirectVendorFunction(shareTokenDetails, "TERMINATED");
+    }
+
+    return res.json({
+      message: "Respondent marked as terminated",
+      respondent: result,
+    });
+  } catch (error) {
+    console.error("Mark terminated error:", error);
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });

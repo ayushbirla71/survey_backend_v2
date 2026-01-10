@@ -22,6 +22,7 @@ import {
   getFullScreeningQuestionsBasedOnQuota,
   checkRespondentQuota_v2,
   markRespondentCompleted_v2,
+  markRespondentTerminated_v2,
 } from "../controllers/quotaController.js";
 
 const router = express.Router();
@@ -138,5 +139,7 @@ router.post(
   validateRequest(markRespondentValidation),
   markRespondentCompleted_v2
 );
+
+router.get("/:surveyId/terminate_v2", markRespondentTerminated_v2);
 
 export default router;
