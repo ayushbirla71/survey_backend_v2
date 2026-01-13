@@ -140,6 +140,6 @@ router.post(
   markRespondentCompleted_v2
 );
 
-router.get("/:surveyId/terminate_v2", markRespondentTerminated_v2);
+router.post("/terminate_v2", markRespondentTerminated_v2);
 
 export default router;

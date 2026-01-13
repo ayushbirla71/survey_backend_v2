@@ -272,7 +272,7 @@ model ShareToken {
   recipient_mobile  String?
   agentUserUniqueId String?
   vendor_respondent_id String?
-  token_hash        String
+  token_hash        String    @unique
   expires_at        DateTime?
   used              Boolean   @default(false)
   created_at        DateTime  @default(now())

@@ -1,3 +1,4 @@
+import axios from "axios";
 import prisma from "../config/db.js";
 import {
   validateQuotaConfiguration,
@@ -7,6 +8,10 @@ import {
   mapScreeningQuestionType,
   formatScreeningQuestionsForResponse,
 } from "../utils/quotaUtils.js";
+import {
+  buildQuotaConditions,
+  validateInnovateMRResponse,
+} from "../utils/vendorUtils.js";
 
 /**
  * @desc Create quota configuration for a survey
@@ -1409,6 +1414,58 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
       ">>>> the value of the SCREENING in prepareInnovaeMRPayload is : ",
       screening
     );
+    if (!screening || !Array.isArray(screening)) return [];
+
+    // extract questionIds without option targets for bulk lookup
+    const noTargetIds = screening
+      .filter((q) => !q.optionTargets || q.optionTargets.length === 0)
+      .map((q) => q.questionId);
+
+    // bulk fetch definitions instead of N queries
+    const defs = await prisma.screeningQuestionDefinition.findMany({
+      where: { id: { in: noTargetIds } },
+    });
+
+    const defsById = Object.fromEntries(defs.map((d) => [d.id, d]));
+
+    const payload = await Promise.all(
+      screening.map(async (q) => {
+        const hasTargets = q.optionTargets && q.optionTargets.length > 0;
+        const vendorQuestionId = parseInt(q.vendorQuestionId);
+
+        if (hasTargets) {
+          const opts = q.optionTargets
+            .filter((o) => o.target > 0)
+            .map((o) => parseInt(o.vendorOptionId));
+
+          return opts.length > 0
+            ? { questionId: vendorQuestionId, Options: opts }
+            : null;
+        }
+
+        const def = defsById[q.questionId];
+        if (!def) return null;
+
+        switch (def.question_key) {
+          case "AGE":
+            return {
+              questionId: vendorQuestionId,
+              Options: q.buckets.map((b) => `${b.value.min}-${b.value.max}`),
+            };
+          case "ZIPCODES":
+            return {
+              questionId: vendorQuestionId,
+              Options: q.buckets.flatMap((b) =>
+                Array.isArray(b.value) ? b.value : [b.value]
+              ),
+            };
+          default:
+            return null;
+        }
+      })
+    );
+
+    return payload.filter(Boolean);
   } catch (error) {
     console.error("Prepare InnovateMR Payload Error:", error);
     throw new Error("Failed to prepare InnovateMR payload.");
@@ -1583,6 +1640,100 @@ const addSurveyToInnovaeMR = async (
       ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
       vendorTargetPayload
     );
+
+    for (const target of vendorTargetPayload) {
+      try {
+        const createVendorTargetResponse = await axios.post(
+          `${base_url}/pega/group/${group_id}/target`,
+          {
+            QuestionId: target.questionId,
+            Options: target.Options,
+          },
+          {
+            headers: {
+              "x-access-token": `${credentials.token}`,
+            },
+            timeout: 10000,
+          }
+        );
+        console.log(
+          ">>>> the value of the createVendorTargetResponse is : ",
+          createVendorTargetResponse.data
+        );
+        const validatedCreateVendorTargetResponse = validateInnovateMRResponse(
+          createVendorTargetResponse,
+          "Create Vendor Target"
+        );
+        console.log(
+          ">>>>> the value of the validatedCreateVendorTargetResponse from INNOVATE MR is : ",
+          validatedCreateVendorTargetResponse
+        );
+      } catch (error) {
+        console.error("Distribute Over InnovateMR Error:", error);
+        throw new Error("Failed to distribute over InnovateMR.");
+      }
+    }
+
+    const updateSurveyVendorConfigWithTarget =
+      await prisma.surveyVendorConfig.update({
+        where: { id: surveyVendorConfigId },
+        data: { is_target_added: true },
+      });
+    console.log(
+      ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
+      updateSurveyVendorConfigWithTarget
+    );
+
+    const conditions = buildQuotaConditions(vendorTargetPayload);
+    console.log(
+      ">>>> the value of the CONDITIONS in distributeOverInnovateMR is : ",
+      conditions
+    );
+
+    const addQuotaToGroupResponse = await axios.post(
+      `${base_url}/pega/quota`,
+      {
+        Title: survey.title + " - Quota",
+        HardStop: true,
+        HardStopType: 0,
+        N: totalTarget,
+        GroupId: group_id,
+        Conditions: conditions,
+      },
+      {
+        headers: {
+          "x-access-token": `${credentials.token}`,
+        },
+        timeout: 10000,
+      }
+    );
+    console.log(
+      ">>>>> the value of the addQuotaToGroupResponse is : ",
+      addQuotaToGroupResponse.data
+    );
+    const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
+      addQuotaToGroupResponse,
+      "Add Quota to Group"
+    );
+    console.log(
+      ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
+      validatedAddQuotaToGroupResponse
+    );
+
+    const quota_id = addQuotaToGroupResponse.data?.Quota?.Id;
+    console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
+
+    const updateSurveyVendorConfigWithQuota =
+      await prisma.surveyVendorConfig.update({
+        where: { id: surveyVendorConfigId },
+        data: { vendor_quota_id: JSON.stringify(quota_id) },
+      });
+    console.log(
+      ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
+      updateSurveyVendorConfigWithQuota
+    );
+
+    return true;
   } catch (error) {
     console.error("Add Survey to InnovateMR Error:", error);
     throw new Error("Failed to add survey to InnovateMR.");
@@ -1607,10 +1758,6 @@ export const updateQuota_v2 = async (req, res) => {
     console.log(
       ">>>>> the value  of the FILTERED SCREENING is : ",
       filteredScreening
-    );
-    console.log(
-      ">>>>> the value  of the FILTERED SCREENING (OPTIONS) is : ",
-      filteredScreening[0].optionTargets
     );
 
     const survey = await prisma.survey.findFirst({
@@ -1682,18 +1829,18 @@ export const updateQuota_v2 = async (req, res) => {
       }
     });
 
-    // if (survey.survey_send_by === "VENDOR") {
-    //   const innovateMrResponse = await addSurveyToInnovaeMR(
-    //     survey,
-    //     vendorId,
-    //     totalTarget,
-    //     filteredScreening
-    //   );
-    //   console.log(
-    //     ">>>>> the value  of the INNOVATE MR RESPONSE is : ",
-    //     innovateMrResponse
-    //   );
-    // }
+    if (survey.survey_send_by === "VENDOR") {
+      const innovateMrResponse = await addSurveyToInnovaeMR(
+        survey,
+        vendorId,
+        totalTarget,
+        filteredScreening
+      );
+      console.log(
+        ">>>>> the value  of the INNOVATE MR RESPONSE is : ",
+        innovateMrResponse
+      );
+    }
 
     return res.json({ message: "Quota updated" });
   } catch (error) {
@@ -2173,7 +2320,7 @@ export const markRespondentCompleted_v2 = async (req, res) => {
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
       where: { token_hash: token },
-      includes: { survey: true },
+      include: { survey: true },
     });
     console.log(
       ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
@@ -2208,7 +2355,7 @@ export const markRespondentTerminated_v2 = async (req, res) => {
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
       where: { token_hash: shareToken },
-      includes: { survey: true },
+      include: { survey: true },
     });
     console.log(
       ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
@@ -2249,7 +2396,7 @@ export const markRespondentTerminated_v2 = async (req, res) => {
 
       await tx.surveyQuota.update({
         where: { id: respondent.surveyQuotaId },
-        data: { total_terminated: { increment: 1 } },
+        data: { terminated_count: { increment: 1 } },
       });
 
       return updatedRespondent;

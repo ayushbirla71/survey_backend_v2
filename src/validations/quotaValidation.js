@@ -140,6 +140,7 @@ export const checkRespondentValidation = Joi.object({
 export const markRespondentValidation = Joi.object({
   respondent_id: Joi.string().uuid().required(),
   response_id: Joi.string().uuid().optional(),
+  token: Joi.string().required(),
 });
 
 // Terminate with reason
