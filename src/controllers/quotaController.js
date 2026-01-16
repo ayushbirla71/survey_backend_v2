@@ -2067,19 +2067,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         "TERMINATED"
       );
 
-      if (quota.survey.survey_send_by == "VENDOR") {
-        const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
-        });
-        await redirectVendorFunction(shareTokenDetails, "TERMINATED");
-      }
-
-      return res.status(404).json({
+      const response = {
         qualified: false,
         status: "QUOTA_INACTIVE",
         message: "Quota is not active",
         respondent_id: respondent.id,
-      });
+      };
+
+      if (quota.survey.survey_send_by == "VENDOR") {
+        const shareTokenDetails = await prisma.shareToken.findUnique({
+          where: { token_hash: shareToken },
+        });
+        response.redirect_url = await redirectVendorFunction(
+          shareTokenDetails,
+          "TERMINATED"
+        );
+      }
+
+      return res.status(200).json(response);
     }
     if (quota.current_count >= quota.target_count) {
       const respondent = await failRespondent(
@@ -2089,19 +2094,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         true
       );
 
-      if (quota.survey.survey_send_by == "VENDOR") {
-        const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
-        });
-        await redirectVendorFunction(shareTokenDetails, "QUOTA_FULL");
-      }
-
-      return res.status(200).json({
+      const response = {
         qualified: false,
         status: "QUOTA_FULL",
         message: "Quota is full",
         respondent_id: respondent.id,
-      });
+      };
+
+      if (quota.survey.survey_send_by == "VENDOR") {
+        const shareTokenDetails = await prisma.shareToken.findUnique({
+          where: { token_hash: shareToken },
+        });
+        response.redirect_url = await redirectVendorFunction(
+          shareTokenDetails,
+          "QUOTA_FULL"
+        );
+      }
+
+      return res.status(200).json(response);
     }
 
     // Build option map
@@ -2134,19 +2144,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
             "TERMINATED"
           );
 
-          if (quota.survey.survey_send_by == "VENDOR") {
-            const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
-            });
-            await redirectVendorFunction(shareTokenDetails, "TERMINATED");
-          }
-
-          return res.status(200).json({
+          const response = {
             qualified: false,
             status: "OPTION_NOT_ALLOWED",
             message: "Screening disqualified",
             respondent_id: respondent.id,
-          });
+          };
+
+          if (quota.survey.survey_send_by == "VENDOR") {
+            const shareTokenDetails = await prisma.shareToken.findUnique({
+              where: { token_hash: shareToken },
+            });
+            response.redirect_url = await redirectVendorFunction(
+              shareTokenDetails,
+              "TERMINATED"
+            );
+          }
+
+          return res.status(200).json(response);
         }
 
         if (qOpt.current_count >= qOpt.target_count) {
@@ -2157,19 +2172,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
             true
           );
 
-          if (quota.survey.survey_send_by == "VENDOR") {
-            const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
-            });
-            await redirectVendorFunction(shareTokenDetails, "QUOTA_FULL");
-          }
-
-          return res.status(200).json({
+          const response = {
             qualified: false,
             status: "QUOTA_FULL",
             message: "Option quota full",
             respondent_id: respondent.id,
-          });
+          };
+
+          if (quota.survey.survey_send_by == "VENDOR") {
+            const shareTokenDetails = await prisma.shareToken.findUnique({
+              where: { token_hash: shareToken },
+            });
+            response.redirect_url = await redirectVendorFunction(
+              shareTokenDetails,
+              "QUOTA_FULL"
+            );
+          }
+
+          return res.status(200).json(response);
         }
 
         normalizedAnswers.push(ans);
@@ -2186,19 +2206,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           "TERMINATED"
         );
 
-        if (quota.survey.survey_send_by == "VENDOR") {
-          const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
-          });
-          await redirectVendorFunction(shareTokenDetails, "TERMINATED");
-        }
-
-        return res.status(200).json({
+        const response = {
           qualified: false,
           status: "NO_BUCKET_MATCH",
           message: "Screening disqualified",
           respondent_id: respondent.id,
-        });
+        };
+
+        if (quota.survey.survey_send_by == "VENDOR") {
+          const shareTokenDetails = await prisma.shareToken.findUnique({
+            where: { token_hash: shareToken },
+          });
+          response.redirect_url = await redirectVendorFunction(
+            shareTokenDetails,
+            "TERMINATED"
+          );
+        }
+
+        return res.status(200).json(response);
       }
 
       if (matched.current_count >= matched.target_count) {
@@ -2209,19 +2234,24 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           true
         );
 
-        if (quota.survey.survey_send_by == "VENDOR") {
-          const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
-          });
-          await redirectVendorFunction(shareTokenDetails, "QUOTA_FULL");
-        }
-
-        return res.status(200).json({
+        const response = {
           qualified: false,
           status: "QUOTA_FULL",
           message: "Open-ended bucket full",
           respondent_id: respondent.id,
-        });
+        };
+
+        if (quota.survey.survey_send_by == "VENDOR") {
+          const shareTokenDetails = await prisma.shareToken.findUnique({
+            where: { token_hash: shareToken },
+          });
+          response.redirect_url = await redirectVendorFunction(
+            shareTokenDetails,
+            "QUOTA_FULL"
+          );
+        }
+
+        return res.status(200).json(response);
       }
 
       normalizedAnswers.push({ ...ans, matchedBucketId: matched.id });
@@ -2275,12 +2305,14 @@ const redirectVendorFunction = async (shareTokenDetails, type) => {
 
     console.log(">>>>> the value of the REDIRECT URL is : ", redirectUrl);
 
-    const redirectResponse = await axios.get(redirectUrl);
-    console.log(
-      ">>>>> the value of the redirectResponse is : ",
-      redirectResponse.data
-    );
-    return redirectResponse.data;
+    // const redirectResponse = await axios.get(redirectUrl);
+    // console.log(
+    //   ">>>>> the value of the redirectResponse is : ",
+    //   redirectResponse.data
+    // );
+    // return redirectResponse.data;
+
+    return redirectUrl;
   } catch (error) {
     console.log("Error in redirectVendorFunction: ", error);
     return error;
@@ -2375,14 +2407,19 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     if (!shareTokenDetails) {
       return res.status(404).json({ message: "Invalid Share Token" });
     }
-    if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
-      await redirectVendorFunction(shareTokenDetails, "COMPLETED");
-    }
 
-    return res.json({
+    const response = {
       message: "Respondent marked as completed",
-      respondent: result,
-    });
+    };
+    if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
+      response.redirect_url = await redirectVendorFunction(
+        shareTokenDetails,
+        "COMPLETED"
+      );
+    }
+    response.respondent = result;
+
+    return res.json(response);
   } catch (error) {
     console.error("Mark completed error:", error);
     return res
@@ -2452,9 +2489,13 @@ export const markRespondentTerminated_v2 = async (req, res) => {
       result
     );
 
-    // if SHARE TOKEN then have to redirect to the vendor Terminate URL
-    if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
-      await redirectVendorFunction(shareTokenDetails, "TERMINATED");
+    if (shareTokenDetails.survey.survey_send_by === "VENDOR") {
+      const redirectUrl = await redirectVendorFunction(
+        shareTokenDetails,
+        "TERMINATED"
+      );
+
+      return res.redirect(302, redirectUrl);
     }
 
     return res.json({
