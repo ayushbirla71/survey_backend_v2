@@ -31,10 +31,10 @@ CREATE TYPE "ConditionOperator" AS ENUM ('EQUALS', 'IN', 'NOT_IN', 'BETWEEN', 'G
 ALTER TABLE "AgeQuota" DROP CONSTRAINT "AgeQuota_surveyQuotaId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "CategoryQuota" DROP CONSTRAINT "CategoryQuota_surveyCategoryId_fkey";
+ALTER TABLE "CategoryQuota" DROP CONSTRAINT IF EXISTS "CategoryQuota_surveyCategoryId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "CategoryQuota" DROP CONSTRAINT "CategoryQuota_surveyQuotaId_fkey";
+ALTER TABLE "CategoryQuota" DROP CONSTRAINT IF EXISTS "CategoryQuota_surveyQuotaId_fkey";
 
 -- DropForeignKey
 ALTER TABLE "GenderQuota" DROP CONSTRAINT "GenderQuota_surveyQuotaId_fkey";
