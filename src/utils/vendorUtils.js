@@ -216,6 +216,135 @@ export async function ingestInnovateMRQuestions({
   };
 }
 
+export async function ingestInnovateMRQuestions_v2({
+  vendorId,
+  apiConfigId,
+  countryCode,
+  language,
+}) {
+  if (!vendorId || !apiConfigId || !countryCode || !language) {
+    throw new Error(
+      "vendorId, apiConfigId, countryCode, language are required"
+    );
+  }
+
+  // 1️⃣ Fetch API config
+  const apiConfig = await prisma.vendorApiConfig.findUnique({
+    where: { id: apiConfigId },
+  });
+  if (!apiConfig || !apiConfig.is_active) {
+    throw new Error("Invalid or inactive VendorApiConfig");
+  }
+  console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
+
+  // 2️⃣ Call InnovateMR API
+  const response = await axios.get(
+    `${apiConfig.base_url}/pega/questions/${countryCode}/${language}`,
+    {
+      headers: {
+        "x-access-token": `${apiConfig.credentials.token}`,
+      },
+    }
+  );
+  console.log(
+    ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
+    response.data
+  );
+
+  const questions = response.data?.Questions;
+  if (!Array.isArray(questions)) {
+    throw new Error("Invalid InnovateMR response format");
+  }
+
+  const BATCH_SIZE = 10;
+
+  for (let i = 0; i < questions.length; i += BATCH_SIZE) {
+    const batch = questions.slice(i, i + BATCH_SIZE);
+
+    await prisma.$transaction(async (tx) => {
+      for (const q of batch) {
+        // Skip question if categories are invalid
+        if (hasInvalidCategory(q.Category)) {
+          console.warn(`[SKIPPED QUESTION] Invalid category data`, {
+            questionKey: q.QuestionKey,
+            categories: q.Category,
+          });
+          continue;
+        }
+
+        const question = await tx.screeningQuestionDefinition.upsert({
+          where: {
+            vendor_question_unique: {
+              vendorId,
+              question_key: q.QuestionKey,
+              country_code: countryCode,
+              language,
+            },
+          },
+          update: {
+            question_text: q.QuestionText,
+            question_type: q.QuestionType,
+            vendor_question_id: String(q.Id),
+            data_type: "STRING",
+            source: "VENDOR",
+            primary_vendor_category_id: String(
+              q.Category.find((c) => c.Primary)?.Id
+            ),
+            primary_vendor_category_name: q.Category.find(
+              (c) => c.Primary
+            )?.Name.toUpperCase(),
+            categories_meta: { original_category: q.Category },
+            is_active: true,
+          },
+          create: {
+            country_code: countryCode,
+            language,
+            question_key: q.QuestionKey,
+            question_text: q.QuestionText,
+            question_type: q.QuestionType,
+            data_type: "STRING",
+            source: "VENDOR",
+            vendorId,
+            vendor_question_id: String(q.Id),
+            primary_vendor_category_id: String(
+              q.Category.find((c) => c.Primary)?.Id
+            ),
+            primary_vendor_category_name: q.Category.find(
+              (c) => c.Primary
+            )?.Name.toUpperCase(),
+            categories_meta: { original_category: q.Category },
+            is_active: true,
+          },
+        });
+
+        await tx.screenQuestionOption.deleteMany({
+          where: { screeningQuestionId: question.id },
+        });
+
+        // Options (optional but still validate)
+        if (Array.isArray(q.Options) && q.Options.length > 0) {
+          await tx.screenQuestionOption.createMany({
+            data: q.Options.filter((o) => o && o.OptionText).map(
+              (o, index) => ({
+                screeningQuestionId: question.id,
+                option_text: o.OptionText.trim(),
+                vendor_option_id: String(o.Id),
+                order_index: index,
+              })
+            ),
+          });
+        }
+      }
+    });
+  }
+
+  return {
+    success: true,
+    totalQuestions: questions.length,
+    questions,
+  };
+}
+
 export async function buildVendorTargetPayload(input) {
   if (!input || typeof input !== "object") return [];
 

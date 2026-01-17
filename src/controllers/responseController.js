@@ -304,7 +304,8 @@ export const submitResponseWithToken = async (req, res) => {
     if (
       shareToken.recipient_email ||
       shareToken.recipient_mobile ||
-      shareToken.agentUserUniqueId
+      shareToken.agentUserUniqueId ||
+      shareToken.vendor_respondent_id
     )
       await markTokenUsed(token);
 
@@ -630,8 +631,10 @@ export const getSurveyAnalytics = async (req, res) => {
           },
         },
         share_tokens: true,
+        quota: true,
       },
     });
+    console.log(">>>>>????? the value of the SURVEY is : ", survey);
 
     if (!survey) {
       return res.status(404).json({ message: "Survey not found" });
@@ -1220,6 +1223,13 @@ export const getSurveyAnalytics = async (req, res) => {
         completionRate, // %
         avgTime, // minutes
         npsScore: overallNpsScore, // Average of all NPS-type question scores
+      },
+      quota: {
+        target_count: survey.quota?.target_count,
+        current_count: survey.quota?.current_count,
+        qualified_count: survey.quota?.qualified_count,
+        terminated_count: survey.quota?.terminated_count,
+        quota_full_count: survey.quota?.quota_full_count,
       },
       questionResults,
       individualResponses,

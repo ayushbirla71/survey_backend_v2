@@ -5,6 +5,7 @@ import {
   createVendorDistribution,
   getAPIConfigsByVendor,
   getSelectedVendorQuestions,
+  getSelectedVendorQuestions_v2,
   getVendorById,
   getVendors,
   redirectVendor,
@@ -20,9 +21,6 @@ const router = express.Router();
 // Vendor Routes
 router.post("/", createVendor);
 router.get("/", getVendors);
-router.get("/:id", getVendorById);
-router.patch("/:id", updateVendor);
-router.patch("/:id/toggle", toggleVendor);
 
 // Vendor Redirect Routes
 router.post("/redirect", redirectVendor);
@@ -35,6 +33,7 @@ router.patch("/api-configs/:id", updateAPIConfig);
 router.patch("/api-configs/:id/default", setDefaultAPIConfig);
 
 // Vendor Question Library Routes
+router.get("/screening-questions", getSelectedVendorQuestions_v2);
 router.get("/:vendorId/questions", getSelectedVendorQuestions);
 
 // Create Vendor Distribution Route
@@ -42,5 +41,9 @@ router.post("/:vendorId/distribute", createVendorDistribution);
 
 // Vendor Job Routes
 router.patch("/:vendorId/updateVendorJobStatus", updateVendorJobStatus);
+
+router.get("/:id", getVendorById);
+router.patch("/:id", updateVendor);
+router.patch("/:id/toggle", toggleVendor);
 
 export default router;
