@@ -1599,7 +1599,7 @@ const addSurveyToInnovaeMR = async (
         N: totalTarget,
         IncidenceRate: 80,
         EstCostPerInterview: 1,
-        MaximumCostPerInterview: 1,
+        MaximumCostPerInterview: 1.8,
         LengthOfInterview: 2,
         LiveSurveyUrl:
           process.env.BACKEND_URL +
