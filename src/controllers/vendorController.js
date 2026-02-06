@@ -19,6 +19,18 @@ export const createVendor = async (req, res) => {
       return res.status(400).json({ message: "key and name are required" });
     }
 
+    const checkVendorExists = await prisma.vendor.findUnique({
+      where: { key },
+    });
+    console.log(
+      ">>>>> the value of the CHECK VENDOR exists is : ",
+      checkVendorExists,
+    );
+    if (checkVendorExists)
+      return res
+        .status(400)
+        .send({ message: "Vendor already exists with this KEY." });
+
     const vendor = await prisma.vendor.create({
       data: { key, name },
     });
@@ -41,7 +53,7 @@ export const createVendor = async (req, res) => {
 
     const vendorWithConfig = await prisma.vendor.findUnique({
       where: { id: vendor.id },
-      include: { api_configs: true },
+      include: { api_configs: true, question_library: true },
     });
     console.log(
       ">>>> the value of the VENDOR WITH CONFIG is : ",
@@ -80,7 +92,7 @@ export const getVendorById = async (req, res) => {
     const { id } = req.params;
     const vendor = await prisma.vendor.findUnique({
       where: { id },
-      include: { api_configs: true },
+      include: { api_configs: true, question_library: true },
     });
     return res.json({ message: "Vendor retrieved successfully", data: vendor });
   } catch (error) {
@@ -100,7 +112,7 @@ export const updateVendor = async (req, res) => {
     const vendor = await prisma.vendor.update({
       where: { id },
       data: { name, is_active },
-      include: { api_configs: true },
+      include: { api_configs: true, question_library: true },
     });
 
     return res.json({ message: "Vendor updated successfully", data: vendor });
@@ -121,7 +133,7 @@ export const toggleVendor = async (req, res) => {
     const vendor = await prisma.vendor.update({
       where: { id },
       data: { is_active },
-      include: { api_configs: true },
+      include: { api_configs: true, question_library: true },
     });
     console.log(">>>>> the value of the TOGGLED VENDOR is : ", vendor);
 

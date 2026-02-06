@@ -25,7 +25,7 @@ export const loginValidation = Joi.object({
 // -------- SURVEY --------
 export const createSurveyValidation = Joi.object({
   title: Joi.string().min(3).max(100).required(),
-  description: Joi.string().max(500).required(),
+  description: Joi.string().max(1000).required(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
     .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT", "VENDOR")
@@ -48,7 +48,7 @@ export const createSurveyValidation = Joi.object({
 
 export const updateSurveyValidation = Joi.object({
   title: Joi.string().min(3).max(100).optional(),
-  description: Joi.string().max(500).optional(),
+  description: Joi.string().max(1000).optional(),
   flow_type: Joi.string().valid("STATIC", "INTERACTIVE", "GAME").optional(),
   survey_send_by: Joi.string()
     .valid("WHATSAPP", "EMAIL", "BOTH", "NONE", "AGENT", "VENDOR")
@@ -123,7 +123,7 @@ export const createResponseValidation = Joi.object({
         media: Joi.array()
           .items(Joi.object({ type: Joi.string(), url: Joi.string() }))
           .optional(),
-      })
+      }),
     )
     .required(),
 });
@@ -142,7 +142,7 @@ export const createResponseWithTokenValidation = Joi.object({
         media: Joi.array()
           .items(Joi.object({ type: Joi.string(), url: Joi.string() }))
           .optional(),
-      })
+      }),
     )
     .required(),
 });
@@ -191,7 +191,7 @@ export const shareSurveyValidation = Joi.object({
         mobile_no: Joi.string()
           .pattern(/^[0-9]{10}$/)
           .optional(),
-      })
+      }),
     )
     .when("type", {
       is: Joi.valid("WHATSAPP", "EMAIL", "BOTH"),

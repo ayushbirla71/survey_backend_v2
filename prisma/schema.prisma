@@ -541,7 +541,8 @@ model Vendor {
 
   api_configs           VendorApiConfig[]
   survey_vendor_configs SurveyVendorConfig[]
-  question_library      VendorQuestionLibrary[]
+  question_library      ScreeningQuestionDefinition[]
+  // question_library      VendorQuestionLibrary[]
 }
 
 // for saving the VENDOR API CONFIG
@@ -594,7 +595,7 @@ model VendorQuestionLibrary {
   id String @id @default(uuid())
 
   vendorId String
-  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  // vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   api_config_id String?
   api_config    VendorApiConfig? @relation(fields: [api_config_id], references: [id])
@@ -682,7 +683,8 @@ model ScreeningQuestionDefinition {
   data_type     DataType  // STRING, NUMBER, ARRAY
 
   source        QuestionSource  // VENDOR | SYSTEM | CUSTOM
-  vendorId             String?
+  vendorId      String?
+  vendor        Vendor? @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   vendor_question_id   String?
 
   primary_vendor_category_id   String?
