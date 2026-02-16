@@ -200,7 +200,7 @@ const createSurveyResponse = async (surveyId, user_metadata, answers) => {
       if (ans.rankingAnswers) {
         const isValid = validateRankingAnswer(
           question,
-          ans.rankingAnswers.map((r) => r.optionId)
+          ans.rankingAnswers.map((r) => r.optionId),
         );
 
         if (!isValid) {
@@ -271,7 +271,7 @@ export const submitResponse = async (req, res) => {
     const response = await createSurveyResponse(
       surveyId,
       user_metadata,
-      answers
+      answers,
     );
     res.status(201).json({ message: "Response submitted", response });
   } catch (error) {
@@ -288,7 +288,7 @@ export const submitResponseWithToken = async (req, res) => {
     const { token, user_metadata, answers } = req.body;
 
     const shareToken = await prisma.shareToken.findFirst({
-      where: { token_hash: token },
+      where: { token_hash: token, isTest: false },
       include: { survey: true },
     });
     if (!shareToken) return res.status(400).json({ message: "Invalid Token." });
@@ -298,7 +298,7 @@ export const submitResponseWithToken = async (req, res) => {
     const response = await createSurveyResponse(
       shareToken.surveyId,
       user_metadata,
-      answers
+      answers,
     );
 
     if (
@@ -698,16 +698,16 @@ export const getSurveyAnalytics = async (req, res) => {
     const perResponseTimes = responses
       .map((r) => {
         const times = r.response_answers.map(
-          (a) => a.submitted_at || r.created_at
+          (a) => a.submitted_at || r.created_at,
         );
         if (!times.length) return 0;
         const earliest = times.reduce(
           (min, t) => (new Date(t) < new Date(min) ? t : min),
-          times[0]
+          times[0],
         );
         const latest = times.reduce(
           (max, t) => (new Date(t) > new Date(max) ? t : max),
-          times[0]
+          times[0],
         );
         return minutesBetween(earliest, latest);
       })
@@ -716,7 +716,7 @@ export const getSurveyAnalytics = async (req, res) => {
       ? Math.round(
           (perResponseTimes.reduce((s, v) => s + v, 0) /
             perResponseTimes.length) *
-            10
+            10,
         ) / 10
       : 0;
 
@@ -1072,7 +1072,7 @@ export const getSurveyAnalytics = async (req, res) => {
     const overallNpsScore =
       npsScores.length > 0
         ? Math.round(
-            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length
+            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length,
           )
         : 0;
 
@@ -1100,18 +1100,18 @@ export const getSurveyAnalytics = async (req, res) => {
     const individualResponses = responses.map((r) => {
       // completion time as earlier
       const times = r.response_answers.map(
-        (a) => a.submitted_at || r.created_at
+        (a) => a.submitted_at || r.created_at,
       );
       const earliest = times.length
         ? times.reduce(
             (min, t) => (new Date(t) < new Date(min) ? t : min),
-            times[0]
+            times[0],
           )
         : r.created_at;
       const latest = times.length
         ? times.reduce(
             (max, t) => (new Date(t) > new Date(max) ? t : max),
-            times[0]
+            times[0],
           )
         : r.created_at;
       const completionTime = minutesBetween(earliest, latest);
@@ -1129,7 +1129,7 @@ export const getSurveyAnalytics = async (req, res) => {
             .map((id) => q.options.find((o) => o.id === id)?.text ?? "")
             .filter(Boolean);
           answer =
-            uiType === "single_choice" ? labels[0] ?? "" : labels.join(", ");
+            uiType === "single_choice" ? (labels[0] ?? "") : labels.join(", ");
         } else if (uiType === "rating") {
           let v =
             a.scaleRatingValue != null ? Number(a.scaleRatingValue) : null;
@@ -1306,16 +1306,16 @@ export const exportSurveyAnalytics = async (req, res) => {
     const perResponseTimes = responses
       .map((r) => {
         const times = r.response_answers.map(
-          (a) => a.submitted_at || r.created_at
+          (a) => a.submitted_at || r.created_at,
         );
         if (!times.length) return 0;
         const earliest = times.reduce(
           (min, t) => (new Date(t) < new Date(min) ? t : min),
-          times[0]
+          times[0],
         );
         const latest = times.reduce(
           (max, t) => (new Date(t) > new Date(max) ? t : max),
-          times[0]
+          times[0],
         );
         return minutesBetween(earliest, latest);
       })
@@ -1324,7 +1324,7 @@ export const exportSurveyAnalytics = async (req, res) => {
       ? Math.round(
           (perResponseTimes.reduce((s, v) => s + v, 0) /
             perResponseTimes.length) *
-            10
+            10,
         ) / 10
       : 0;
 
@@ -1623,7 +1623,7 @@ export const exportSurveyAnalytics = async (req, res) => {
     const overallNpsScore =
       npsScores.length > 0
         ? Math.round(
-            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length
+            npsScores.reduce((sum, score) => sum + score, 0) / npsScores.length,
           )
         : 0;
 
@@ -1651,18 +1651,18 @@ export const exportSurveyAnalytics = async (req, res) => {
     const individualResponses = responses.map((r) => {
       // completion time as earlier
       const times = r.response_answers.map(
-        (a) => a.submitted_at || r.created_at
+        (a) => a.submitted_at || r.created_at,
       );
       const earliest = times.length
         ? times.reduce(
             (min, t) => (new Date(t) < new Date(min) ? t : min),
-            times[0]
+            times[0],
           )
         : r.created_at;
       const latest = times.length
         ? times.reduce(
             (max, t) => (new Date(t) > new Date(max) ? t : max),
-            times[0]
+            times[0],
           )
         : r.created_at;
       const completionTime = minutesBetween(earliest, latest);
@@ -1680,7 +1680,7 @@ export const exportSurveyAnalytics = async (req, res) => {
             .map((id) => q.options.find((o) => o.id === id)?.text ?? "")
             .filter(Boolean);
           answer =
-            uiType === "single_choice" ? labels[0] ?? "" : labels.join(", ");
+            uiType === "single_choice" ? (labels[0] ?? "") : labels.join(", ");
         } else if (uiType === "rating") {
           let v =
             a.scaleRatingValue != null ? Number(a.scaleRatingValue) : null;

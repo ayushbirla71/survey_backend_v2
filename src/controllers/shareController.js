@@ -76,6 +76,46 @@ export const shareSurvey = async (req, res) => {
 };
 
 /**
+ * Create Survey Test Token
+ */
+export const createSurveyTestToken = async (req, res) => {
+  try {
+    const surveyId = req.body.surveyId;
+    console.log(">>>>>> the value of the SURVEY ID is  : ", surveyId);
+
+    // Check survey exists
+    const survey = await prisma.survey.findUnique({ where: { id: surveyId } });
+    if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    const shareToken = await prisma.shareToken.findFirst({
+      where: { surveyId, isTest: true },
+    });
+    console.log(">>>>> the value of the SHARE TOKEN is : ", shareToken);
+
+    let publicLink = "";
+    if (shareToken) {
+      publicLink = `${process.env.FRONTEND_URL}/survey/${shareToken.token_hash}`;
+    } else {
+      // Create a single public token
+      const token_hash = generateTokenHash();
+      const token = await prisma.shareToken.create({
+        data: { surveyId, token_hash, isTest: true },
+      });
+
+      publicLink = `${process.env.FRONTEND_URL}/survey/${token.token_hash}`;
+    }
+
+    return res.json({
+      message: "Survey shared publicly",
+      data: publicLink,
+    });
+  } catch (error) {
+    console.error("Create Survey Test Token Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
  * Validate share token
  */
 export const validateToken = async (req, res) => {
@@ -119,7 +159,7 @@ export const validateToken = async (req, res) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
         process.env.AWS_BUCKET_NAME,
-        mediaAsset.url
+        mediaAsset.url,
       );
       return mediaAsset;
     };
@@ -140,7 +180,11 @@ export const validateToken = async (req, res) => {
       }
     }
 
-    res.json({ surveyId: shareToken.surveyId, survey: shareToken.survey });
+    res.json({
+      surveyId: shareToken.surveyId,
+      survey: shareToken.survey,
+      isTest: shareToken.isTest,
+    });
   } catch (error) {
     console.error("Validate Token Error:", error);
     res.status(500).json({ message: "Server error" });
@@ -153,7 +197,7 @@ export const validateToken = async (req, res) => {
 export const markTokenUsed = async (tokenHash) => {
   try {
     await prisma.shareToken.updateMany({
-      where: { token_hash: tokenHash },
+      where: { token_hash: tokenHash, isTest: false },
       data: { used: true },
     });
   } catch (error) {

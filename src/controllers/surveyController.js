@@ -282,7 +282,9 @@ export const getSurveys = async (req, res) => {
       orderBy: { created_at: "desc" },
       include: {
         questions: true,
-        share_tokens: true,
+        share_tokens: {
+          where: { isTest: false },
+        },
         responses: true,
         vendorConfig: true,
       },

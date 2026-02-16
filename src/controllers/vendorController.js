@@ -822,7 +822,7 @@ export const redirectVendor = async (req, res) => {
     console.log(">>>>> the value of the isCompleted is : ", isCompleted);
 
     const shareToken = await prisma.shareToken.findFirst({
-      where: { token_hash: shareTokenId },
+      where: { token_hash: shareTokenId, isTest: false },
     });
     console.log(">>>>> the value of the shareToken is : ", shareToken);
     if (!shareToken) return res.status(400).json({ message: "Invalid Token." });

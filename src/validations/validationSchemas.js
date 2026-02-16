@@ -212,6 +212,10 @@ export const shareSurveyValidation = Joi.object({
     }),
 });
 
+export const testTokenValidation = Joi.object({
+  surveyId: Joi.string().uuid().required(),
+});
+
 // -------- ANALYTICS --------
 export const surveyAnalyticsValidation = Joi.object({
   surveyId: Joi.string().uuid().required(),

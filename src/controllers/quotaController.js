@@ -2233,7 +2233,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
       if (quota.survey.survey_send_by == "VENDOR") {
         const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
+          where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
           shareTokenDetails,
@@ -2260,7 +2260,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
       if (quota.survey.survey_send_by == "VENDOR") {
         const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
+          where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
           shareTokenDetails,
@@ -2310,7 +2310,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
           if (quota.survey.survey_send_by == "VENDOR") {
             const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
+              where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
               shareTokenDetails,
@@ -2338,7 +2338,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
           if (quota.survey.survey_send_by == "VENDOR") {
             const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
+              where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
               shareTokenDetails,
@@ -2372,7 +2372,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
         if (quota.survey.survey_send_by == "VENDOR") {
           const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
+            where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
             shareTokenDetails,
@@ -2400,7 +2400,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
         if (quota.survey.survey_send_by == "VENDOR") {
           const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
+            where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
             shareTokenDetails,
@@ -2554,7 +2554,7 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     });
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
-      where: { token_hash: token },
+      where: { token_hash: token, isTest: false },
       include: { survey: true },
     });
     console.log(
@@ -2594,7 +2594,7 @@ export const markRespondentTerminated_v2 = async (req, res) => {
     );
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
-      where: { token_hash: shareToken },
+      where: { token_hash: shareToken, isTest: false },
       include: { survey: true },
     });
     console.log(

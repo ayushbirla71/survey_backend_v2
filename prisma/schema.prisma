@@ -275,6 +275,7 @@ model ShareToken {
   token_hash        String    @unique
   expires_at        DateTime?
   used              Boolean   @default(false)
+  isTest            Boolean   @default(false)
   created_at        DateTime  @default(now())
 }
 
