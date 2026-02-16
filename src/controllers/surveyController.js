@@ -87,7 +87,7 @@ export const createSurvey = async (req, res) => {
         try {
           const fallbackQuestions = generateFallbackQuestions(
             { title, categoryOfSurvey },
-            5
+            5,
           );
 
           const questionsToCreate = fallbackQuestions.map(
@@ -101,7 +101,7 @@ export const createSurvey = async (req, res) => {
               ai_prompt: question.ai_prompt,
               ai_model: question.ai_model,
               confidence_score: question.confidence_score,
-            })
+            }),
           );
 
           await prisma.aIGeneratedQuestion.createMany({
@@ -185,7 +185,7 @@ export const createSurvey_v2 = async (req, res) => {
         const generatedQuestions = await generateSurveyQuestionsWithCategory(
           title,
           surveyCategoryDetails.name || "General",
-          description
+          description,
         );
         console.log("Generated Questions:", generatedQuestions);
 
@@ -217,7 +217,7 @@ export const createSurvey_v2 = async (req, res) => {
               question.options || [],
               question.categoryId,
               question.rowOptions || [],
-              question.columnOptions || []
+              question.columnOptions || [],
             );
 
             // console.log(">>>>>>> RESPONSE -> ", response);
@@ -240,7 +240,7 @@ export const createSurvey_v2 = async (req, res) => {
             });
 
             return questionWithOptions;
-          }
+          },
         );
 
         aiGeneratedQuestions = await Promise.all(questionsToCreatePromises);
@@ -280,7 +280,14 @@ export const getSurveys = async (req, res) => {
     const surveys = await prisma.survey.findMany({
       where: { userId: req.user.id, is_deleted: false },
       orderBy: { created_at: "desc" },
-      include: { questions: true, share_tokens: true, responses: true },
+      include: {
+        questions: true,
+        share_tokens: {
+          where: { isTest: false },
+        },
+        responses: true,
+        vendorConfig: true,
+      },
     });
 
     res.json({ surveys });
@@ -325,7 +332,7 @@ export const getSurveyById = async (req, res) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
         process.env.AWS_BUCKET_NAME,
-        mediaAsset.url
+        mediaAsset.url,
       );
       return mediaAsset;
     };
@@ -432,11 +439,11 @@ export const updateSurvey_v2 = async (req, res) => {
         const generatedQuestions = await generateSurveyQuestionsWithCategory(
           survey.title,
           surveyCategoryDetails.name || "General",
-          survey.description
+          survey.description,
         );
         console.log(
           ">>>>>>>>>####### the Value of GENERATED QUESTIONS is : ",
-          generatedQuestions
+          generatedQuestions,
         );
 
         // Save generated questions to database
@@ -456,7 +463,7 @@ export const updateSurvey_v2 = async (req, res) => {
               question.options || [],
               question.categoryId,
               question.rowOptions || [],
-              question.columnOptions || []
+              question.columnOptions || [],
             );
 
             const questionWithOptions = await prisma.question.findUnique({
@@ -477,7 +484,7 @@ export const updateSurvey_v2 = async (req, res) => {
             });
 
             return questionWithOptions;
-          }
+          },
         );
 
         aiGeneratedQuestions = await Promise.all(questionsToCreatePromises);

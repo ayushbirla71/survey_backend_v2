@@ -186,7 +186,7 @@ export const createQuotaConfig = async (req, res) => {
     const formattedQuota = {
       ...completeQuota,
       screening_questions: formatScreeningQuestionsForResponse(
-        completeQuota.screening_questions
+        completeQuota.screening_questions,
       ),
     };
 
@@ -231,7 +231,7 @@ export const getQuotaConfig = async (req, res) => {
     const formattedQuota = {
       ...quota,
       screening_questions: formatScreeningQuestionsForResponse(
-        quota.screening_questions
+        quota.screening_questions,
       ),
     };
 
@@ -411,7 +411,7 @@ export const updateQuotaConfig = async (req, res) => {
       const formattedQuota = {
         ...completeQuota,
         screening_questions: formatScreeningQuestionsForResponse(
-          completeQuota.screening_questions
+          completeQuota.screening_questions,
         ),
       };
 
@@ -562,7 +562,7 @@ export const updateQuotaConfig = async (req, res) => {
     const formattedQuota = {
       ...updatedQuota,
       screening_questions: formatScreeningQuestionsForResponse(
-        updatedQuota.screening_questions
+        updatedQuota.screening_questions,
       ),
     };
 
@@ -667,7 +667,7 @@ export const getQuotaStatus = async (req, res) => {
         ...formatQuotaStatus(q, quota.total_target),
       })),
       screening_questions: formatScreeningQuestionsForResponse(
-        quota.screening_questions
+        quota.screening_questions,
       ),
     };
 
@@ -731,8 +731,8 @@ export const checkRespondentQuota = async (req, res) => {
       const redirectUrlForDB = isQuotaFull
         ? quota.quota_full_url
         : isTerminated
-        ? quota.terminated_url
-        : null;
+          ? quota.terminated_url
+          : null;
 
       const redirectUpdateFields = redirectUrlForDB
         ? {
@@ -810,14 +810,14 @@ export const checkRespondentQuota = async (req, res) => {
     // ---------------- CHECK: Age ----------------
     if (age !== undefined && quota.age_quotas.length > 0) {
       const match = quota.age_quotas.find(
-        (q) => age >= q.min_age && age <= q.max_age
+        (q) => age >= q.min_age && age <= q.max_age,
       );
 
       if (!match) {
         return saveAndRespond(
           "TERMINATED",
           "Age does not match any allowed quota range",
-          "AGE"
+          "AGE",
         );
       }
 
@@ -834,7 +834,7 @@ export const checkRespondentQuota = async (req, res) => {
         return saveAndRespond(
           "TERMINATED",
           "Gender does not match any allowed quota",
-          "GENDER"
+          "GENDER",
         );
       }
 
@@ -859,7 +859,7 @@ export const checkRespondentQuota = async (req, res) => {
         return saveAndRespond(
           "TERMINATED",
           "Location does not match any allowed quota",
-          "LOCATION"
+          "LOCATION",
         );
       }
 
@@ -867,7 +867,7 @@ export const checkRespondentQuota = async (req, res) => {
         return saveAndRespond(
           "QUOTA_FULL",
           "Location quota is full",
-          "LOCATION"
+          "LOCATION",
         );
       }
     }
@@ -875,14 +875,14 @@ export const checkRespondentQuota = async (req, res) => {
     // ---------------- CHECK: Category ----------------
     if (surveyCategoryId && quota.category_quotas.length > 0) {
       const match = quota.category_quotas.find(
-        (q) => q.surveyCategoryId === surveyCategoryId
+        (q) => q.surveyCategoryId === surveyCategoryId,
       );
 
       if (!match) {
         return saveAndRespond(
           "TERMINATED",
           "Category does not match any allowed quota",
-          "CATEGORY"
+          "CATEGORY",
         );
       }
 
@@ -890,7 +890,7 @@ export const checkRespondentQuota = async (req, res) => {
         return saveAndRespond(
           "QUOTA_FULL",
           "Category quota is full",
-          "CATEGORY"
+          "CATEGORY",
         );
       }
     }
@@ -1308,7 +1308,7 @@ export const markRespondentCompleted = async (req, res) => {
         vendor_respondent_id: respondent.vendor_respondent_id,
         surveyId,
         status: "COMPLETED",
-      }
+      },
     );
 
     let callbackResult = null;
@@ -1385,7 +1385,7 @@ export const markRespondentTerminated = async (req, res) => {
         vendor_respondent_id: respondent.vendor_respondent_id,
         surveyId,
         status: "TERMINATED",
-      }
+      },
     );
 
     let callbackResult = null;
@@ -1412,7 +1412,7 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
   try {
     console.log(
       ">>>> the value of the SCREENING in prepareInnovaeMRPayload is : ",
-      screening
+      screening,
     );
     if (!screening || !Array.isArray(screening)) return [];
 
@@ -1456,13 +1456,13 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
             return {
               questionId: vendorQuestionId,
               Options: q.buckets.flatMap((b) =>
-                Array.isArray(b.value) ? b.value : [b.value]
+                Array.isArray(b.value) ? b.value : [b.value],
               ),
             };
           default:
             return null;
         }
-      })
+      }),
     );
 
     return payload.filter(Boolean);
@@ -1476,24 +1476,24 @@ const addSurveyToInnovaeMR = async (
   survey,
   vendorId,
   totalTarget,
-  screening
+  screening,
 ) => {
   try {
     console.log(
       ">>>> the value of the SURVEY in addSurveyToInnovaeMR is : ",
-      survey
+      survey,
     );
     console.log(
       ">>>> the value of the VENDOR ID in addSurveyToInnovaeMR is : ",
-      vendorId
+      vendorId,
     );
     console.log(
       ">>>> the value of the TOTAL TARGET in addSurveyToInnovaeMR is : ",
-      totalTarget
+      totalTarget,
     );
     console.log(
       ">>>> the value of the SCREENING in addSurveyToInnovaeMR is : ",
-      screening
+      screening,
     );
 
     const vendorDetails = await prisma.vendor.findUnique({
@@ -1504,7 +1504,7 @@ const addSurveyToInnovaeMR = async (
     });
     console.log(
       ">>>> the value of the VENDOR DETAILS in addSurveyToInnovaeMR is : ",
-      vendorDetails
+      vendorDetails,
     );
     if (!vendorDetails) {
       throw new Error("Vendor not found");
@@ -1521,11 +1521,11 @@ const addSurveyToInnovaeMR = async (
     const isSurveyVendorConfigExist = await prisma.surveyVendorConfig.findFirst(
       {
         where: { surveyId: survey.id, vendorId: vendorDetails.id },
-      }
+      },
     );
     console.log(
       ">>>> the value of the isSurveyVendorConfigExist in addSurveyToInnovaeMR is : ",
-      isSurveyVendorConfigExist
+      isSurveyVendorConfigExist,
     );
 
     let job_id = isSurveyVendorConfigExist
@@ -1533,7 +1533,7 @@ const addSurveyToInnovaeMR = async (
       : null;
     console.log(
       ">>>> the value of the JOB ID in addSurveyToInnovaeMR is : ",
-      job_id
+      job_id,
     );
 
     let surveyVendorConfigId = isSurveyVendorConfigExist
@@ -1541,7 +1541,7 @@ const addSurveyToInnovaeMR = async (
       : null;
     console.log(
       ">>>> the value of the surveyVendorConfigId in addSurveyToInnovaeMR is : ",
-      surveyVendorConfigId
+      surveyVendorConfigId,
     );
 
     if (!job_id) {
@@ -1556,19 +1556,19 @@ const addSurveyToInnovaeMR = async (
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        }
+        },
       );
       console.log(
         ">>>>> the value of the createJobResponse from INNOVATE MR is : ",
-        createJobResponse.data
+        createJobResponse.data,
       );
       const validatedCreateJobResponse = validateInnovateMRResponse(
         createJobResponse,
-        "Create Job"
+        "Create Job",
       );
       console.log(
         ">>>>> the value of the validatedCreateJobResponse from INNOVATE MR is : ",
-        validatedCreateJobResponse
+        validatedCreateJobResponse,
       );
 
       job_id = createJobResponse.data?.job?.Id;
@@ -1585,90 +1585,169 @@ const addSurveyToInnovaeMR = async (
       });
       console.log(
         ">>>>> the value of the createSurveyVendorConfig is : ",
-        createSurveyVendorConfig
+        createSurveyVendorConfig,
       );
 
       surveyVendorConfigId = createSurveyVendorConfig.id;
     }
 
-    // Adding GROUP to the JOB
-    const createGroupResponse = await axios.post(
-      `${base_url}/pega/jobs/${job_id}/group`,
-      {
-        Name: survey.title + " - Group",
-        N: totalTarget,
-        IncidenceRate: 80,
-        EstCostPerInterview: 1,
-        MaximumCostPerInterview: 1,
-        LengthOfInterview: 2,
-        LiveSurveyUrl:
-          process.env.BACKEND_URL +
-          `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
-        Target: { Country: "India", Languages: "ENGLISH" },
-      },
-      {
-        headers: {
-          "x-access-token": `${credentials.token}`,
+    let group_id = isSurveyVendorConfigExist
+      ? JSON.parse(isSurveyVendorConfigExist.vendor_group_id)
+      : null;
+
+    console.log(
+      ">>>>>> the value of the GROUP iD in addSurveyToInnovaeMR is : ",
+      group_id,
+    );
+
+    if (!group_id) {
+      // Adding GROUP to the JOB
+      const createGroupResponse = await axios.post(
+        `${base_url}/pega/jobs/${job_id}/group`,
+        {
+          Name: survey.title + " - Group",
+          N: totalTarget,
+          IncidenceRate: 80,
+          EstCostPerInterview: 1,
+          MaximumCostPerInterview: 1.8,
+          LengthOfInterview: 2,
+          LiveSurveyUrl:
+            process.env.BACKEND_URL +
+            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+          Target: { Country: "India", Languages: "ENGLISH" },
         },
-      }
-    );
-    console.log(
-      ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
-      createGroupResponse.data
-    );
-    const validatedCreateGroupResponse = validateInnovateMRResponse(
-      createGroupResponse,
-      "Create Group"
-    );
-    console.log(
-      ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
-      validatedCreateGroupResponse
-    );
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
+        createGroupResponse.data,
+      );
+      const validatedCreateGroupResponse = validateInnovateMRResponse(
+        createGroupResponse,
+        "Create Group",
+      );
+      console.log(
+        ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
+        validatedCreateGroupResponse,
+      );
 
-    const group_id = createGroupResponse.data?.group?.Id;
-    console.log(">>>>> the value of the GROUP ID is : ", group_id);
+      group_id = createGroupResponse.data?.group?.Id;
+      console.log(">>>>> the value of the GROUP ID is : ", group_id);
 
-    const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
-      where: { id: surveyVendorConfigId },
-      data: { vendor_group_id: JSON.stringify(group_id) },
-    });
-    console.log(
-      ">>>>> the value of the updateSurveyVendorConfig is : ",
-      updateSurveyVendorConfig
-    );
+      const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
+        where: { id: surveyVendorConfigId },
+        data: { vendor_group_id: JSON.stringify(group_id) },
+      });
+      console.log(
+        ">>>>> the value of the updateSurveyVendorConfig is : ",
+        updateSurveyVendorConfig,
+      );
+    } else {
+      // Group already created have to update it
+      const getGroupDetails = await axios.get(
+        `${base_url}/pega/groups/${group_id}`,
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>>> the value of the GET GROUP DETAILS is : ",
+        getGroupDetails.data,
+      );
+      const group = getGroupDetails.data.group;
+      console.log(">>>>>> the value of the GROUP is : ", group);
+
+      const updateGroupPayload = {
+        Name: group.Name,
+        N: totalTarget,
+        IncidenceRate: group.IncidenceRate,
+        EstCostPerInterview: group.EstCostPerInterview,
+        LengthOfInterview: group.LengthOfInterview,
+        LiveSurveyUrl: group.LiveSurveyUrl,
+        TestSurveyUrl: group.LiveSurveyUrl,
+        Color: 0, // White
+        Priority: 0, // Normal
+        DeviceType: group.DeviceType,
+        Target: { GeoIPCheck: 0, Country: "India", Languages: "ENGLISH" },
+        Note: "Some Updates in the Group.",
+        MaximumCostPerInterview: group.MaximumCostPerInterview,
+      };
+      console.log(
+        ">>>> the value of the UPDATE GROUP PAYLOAD is : ",
+        updateGroupPayload,
+      );
+
+      const updateGroup = await axios.put(
+        `${base_url}/pega/group/${group_id}`,
+        updateGroupPayload,
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>>> the value of the UPDATE GROUP is : ",
+        updateGroup.data,
+      );
+      const validatedUpdateGroupResponse = validateInnovateMRResponse(
+        updateGroup,
+        "Update Group",
+      );
+      console.log(
+        ">>>>> the value of the validatedUpdateGroupResponse from INNOVATE MR is : ",
+        validatedUpdateGroupResponse,
+      );
+    }
 
     const vendorTargetPayload = await prepareInnovaeMRTargetPayload(screening);
     console.log(
       ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
-      vendorTargetPayload
+      vendorTargetPayload,
+    );
+
+    const is_target_added = isSurveyVendorConfigExist
+      ? isSurveyVendorConfigExist.is_target_added
+      : false;
+    console.log(
+      ">>>>> the value of the IS SURVEY ADDED is : ",
+      is_target_added,
     );
 
     for (const target of vendorTargetPayload) {
       try {
-        const createVendorTargetResponse = await axios.post(
-          `${base_url}/pega/group/${group_id}/target`,
-          {
+        const method = is_target_added ? "put" : "post";
+
+        const createVendorTargetResponse = await axios({
+          method,
+          url: `${base_url}/pega/group/${group_id}/target`,
+          data: {
             QuestionId: target.questionId,
             Options: target.Options,
           },
-          {
-            headers: {
-              "x-access-token": `${credentials.token}`,
-            },
-            timeout: 10000,
-          }
-        );
+
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+          timeout: 10000,
+        });
         console.log(
           ">>>> the value of the createVendorTargetResponse is : ",
-          createVendorTargetResponse.data
+          createVendorTargetResponse.data,
         );
         const validatedCreateVendorTargetResponse = validateInnovateMRResponse(
           createVendorTargetResponse,
-          "Create Vendor Target"
+          "Create Vendor Target",
         );
         console.log(
           ">>>>> the value of the validatedCreateVendorTargetResponse from INNOVATE MR is : ",
-          validatedCreateVendorTargetResponse
+          validatedCreateVendorTargetResponse,
         );
       } catch (error) {
         console.error("Distribute Over InnovateMR Error:", error);
@@ -1676,64 +1755,128 @@ const addSurveyToInnovaeMR = async (
       }
     }
 
-    const updateSurveyVendorConfigWithTarget =
-      await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { is_target_added: true },
-      });
-    console.log(
-      ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
-      updateSurveyVendorConfigWithTarget
-    );
+    if (!is_target_added) {
+      const updateSurveyVendorConfigWithTarget =
+        await prisma.surveyVendorConfig.update({
+          where: { id: surveyVendorConfigId },
+          data: { is_target_added: true },
+        });
+      console.log(
+        ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
+        updateSurveyVendorConfigWithTarget,
+      );
+    }
 
     const conditions = buildQuotaConditions(vendorTargetPayload);
     console.log(
       ">>>> the value of the CONDITIONS in distributeOverInnovateMR is : ",
-      conditions
+      conditions,
     );
 
-    const addQuotaToGroupResponse = await axios.post(
-      `${base_url}/pega/quota`,
-      {
-        Title: survey.title + " - Quota",
-        HardStop: true,
-        HardStopType: 0,
-        N: totalTarget,
-        GroupId: group_id,
-        Conditions: conditions,
-      },
-      {
-        headers: {
-          "x-access-token": `${credentials.token}`,
-        },
-        timeout: 10000,
-      }
-    );
-    console.log(
-      ">>>>> the value of the addQuotaToGroupResponse is : ",
-      addQuotaToGroupResponse.data
-    );
-    const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
-      addQuotaToGroupResponse,
-      "Add Quota to Group"
-    );
-    console.log(
-      ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
-      validatedAddQuotaToGroupResponse
-    );
-
-    const quota_id = addQuotaToGroupResponse.data?.Quota?.Id;
+    let quota_id = isSurveyVendorConfigExist
+      ? JSON.parse(isSurveyVendorConfigExist.vendor_quota_id)
+      : null;
     console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
 
-    const updateSurveyVendorConfigWithQuota =
-      await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { vendor_quota_id: JSON.stringify(quota_id) },
-      });
-    console.log(
-      ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
-      updateSurveyVendorConfigWithQuota
-    );
+    if (!quota_id) {
+      const addQuotaToGroupResponse = await axios.post(
+        `${base_url}/pega/quota`,
+        {
+          Title: survey.title + " - Quota",
+          HardStop: true,
+          HardStopType: 0,
+          N: totalTarget,
+          GroupId: group_id,
+          Conditions: conditions,
+        },
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>>> the value of the addQuotaToGroupResponse is : ",
+        addQuotaToGroupResponse.data,
+      );
+      const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
+        addQuotaToGroupResponse,
+        "Add Quota to Group",
+      );
+      console.log(
+        ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
+        validatedAddQuotaToGroupResponse,
+      );
+
+      quota_id = addQuotaToGroupResponse.data?.Quota?.Id;
+      console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
+
+      const updateSurveyVendorConfigWithQuota =
+        await prisma.surveyVendorConfig.update({
+          where: { id: surveyVendorConfigId },
+          data: { vendor_quota_id: JSON.stringify(quota_id) },
+        });
+      console.log(
+        ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
+        updateSurveyVendorConfigWithQuota,
+      );
+    } else {
+      // Quota already exists have to update it
+      const getGroupQuota = await axios.get(
+        `${base_url}/pega/quotas/${group_id}`,
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>>> the value of the GET GROUP QUOTA is : ",
+        getGroupQuota.data,
+      );
+
+      const quotas = getGroupQuota.data.Quotas;
+      console.log(">>>>>>> the value of the QUOTAS is : ", quotas);
+
+      const quota = quotas.find((q) => a.Id == quota_id);
+      console.log(">>>>>> the value of the QUOTA is : ", quota);
+
+      const updatedQuotaPayload = {
+        Title: quota.Title,
+        HardStop: quota.HardStop,
+        HardStopType: quota.HardStopType,
+        N: totalTarget,
+        GroupId: quota.GroupId,
+        Conditions: conditions,
+      };
+      console.log(
+        ">>>>>> the value of the UPDATE QUOTA PAYLOAD is : ",
+        updatedQuotaPayload,
+      );
+
+      const updateGroupQuota = await axios.put(
+        `${base_url}/pega/quota/${quota_id}`,
+        updatedQuotaPayload,
+        {
+          headers: {
+            "x-access-token": `${credentials.token}`,
+          },
+        },
+      );
+      console.log(
+        ">>>> the value of the UPDATE GROUP QUOTA is : ",
+        updateGroupQuota.data,
+      );
+
+      const validatedUpdateQuotaToGroupResponse = validateInnovateMRResponse(
+        updateGroupQuota,
+        "Update Quota to Group",
+      );
+      console.log(
+        ">>>>> the value of the validatedUpdateQuotaToGroupResponse from INNOVATE MR is : ",
+        validatedUpdateQuotaToGroupResponse,
+      );
+    }
 
     return true;
   } catch (error) {
@@ -1759,7 +1902,7 @@ export const updateQuota_v2 = async (req, res) => {
     }));
     console.log(
       ">>>>> the value  of the FILTERED SCREENING is : ",
-      filteredScreening
+      filteredScreening,
     );
 
     const survey = await prisma.survey.findFirst({
@@ -1795,7 +1938,7 @@ export const updateQuota_v2 = async (req, res) => {
       });
       console.log(
         ">>>>> the value  of the DELETED OPTIONS is : ",
-        deletedOptions
+        deletedOptions,
       );
       await tx.surveyQuotaBucket.deleteMany({ where: { quotaId: quota.id } });
 
@@ -1836,11 +1979,11 @@ export const updateQuota_v2 = async (req, res) => {
         survey,
         vendorId,
         totalTarget,
-        filteredScreening
+        filteredScreening,
       );
       console.log(
         ">>>>> the value  of the INNOVATE MR RESPONSE is : ",
-        innovateMrResponse
+        innovateMrResponse,
       );
     }
 
@@ -1866,9 +2009,18 @@ export const getQuota_v2 = async (req, res) => {
 
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
-      include: { quota_options: true, quota_buckets: true },
+      include: {
+        quota_options: {
+          include: { screeningQuestion: true, screeningOption: true },
+        },
+        quota_buckets: true,
+      },
     });
     console.log(">>>>> the value  of the QUOTA is : ", quota);
+    console.log(
+      ">>>>>> the value of the QUOTA OPTIONS in QUOTA is : ",
+      quota?.quota_options,
+    );
     if (!quota) return res.status(404).json({ message: "Quota not found" });
 
     /**
@@ -1882,6 +2034,8 @@ export const getQuota_v2 = async (req, res) => {
       if (!questionMap.has(questionId)) {
         questionMap.set(questionId, {
           questionId,
+          vendorQuestionId:
+            option?.screeningQuestion?.vendor_question_id || null,
           id: questionId,
           optionTargets: [],
           buckets: [],
@@ -1893,6 +2047,7 @@ export const getQuota_v2 = async (req, res) => {
         option_id: option.screeningOptionId,
         target: option.target_count,
         current: option.current_count,
+        vendorOptionId: option?.screeningOption?.vendor_option_id || null,
       });
     });
 
@@ -1970,7 +2125,7 @@ export const getFullScreeningQuestionsBasedOnQuota = async (req, res) => {
       new Set([
         ...quota.quota_options.map((o) => o.screeningQuestionId),
         ...quota.quota_buckets.map((b) => b.screeningQuestionId),
-      ])
+      ]),
     );
 
     const questions = await prisma.screeningQuestionDefinition.findMany({
@@ -2066,7 +2221,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       const respondent = await failRespondent(
         quota.id,
         vendor_respondent_id,
-        "TERMINATED"
+        "TERMINATED",
       );
 
       const response = {
@@ -2078,11 +2233,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
       if (quota.survey.survey_send_by == "VENDOR") {
         const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
+          where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
           shareTokenDetails,
-          "TERMINATED"
+          "TERMINATED",
         );
       }
 
@@ -2093,7 +2248,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         quota.id,
         vendor_respondent_id,
         "QUOTA_FULL",
-        true
+        true,
       );
 
       const response = {
@@ -2105,11 +2260,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
       if (quota.survey.survey_send_by == "VENDOR") {
         const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken },
+          where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
           shareTokenDetails,
-          "QUOTA_FULL"
+          "QUOTA_FULL",
         );
       }
 
@@ -2121,7 +2276,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       quota.quota_options.map((o) => [
         `${o.screeningQuestionId}_${o.screeningOptionId}`,
         o,
-      ])
+      ]),
     );
 
     const bucketsByQuestion = new Map();
@@ -2143,7 +2298,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           const respondent = await failRespondent(
             quota.id,
             vendor_respondent_id,
-            "TERMINATED"
+            "TERMINATED",
           );
 
           const response = {
@@ -2155,11 +2310,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
           if (quota.survey.survey_send_by == "VENDOR") {
             const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
+              where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
               shareTokenDetails,
-              "TERMINATED"
+              "TERMINATED",
             );
           }
 
@@ -2171,7 +2326,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
             quota.id,
             vendor_respondent_id,
             "QUOTA_FULL",
-            true
+            true,
           );
 
           const response = {
@@ -2183,11 +2338,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
           if (quota.survey.survey_send_by == "VENDOR") {
             const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken },
+              where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
               shareTokenDetails,
-              "QUOTA_FULL"
+              "QUOTA_FULL",
             );
           }
 
@@ -2205,7 +2360,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         const respondent = await failRespondent(
           quota.id,
           vendor_respondent_id,
-          "TERMINATED"
+          "TERMINATED",
         );
 
         const response = {
@@ -2217,11 +2372,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
         if (quota.survey.survey_send_by == "VENDOR") {
           const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
+            where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
             shareTokenDetails,
-            "TERMINATED"
+            "TERMINATED",
           );
         }
 
@@ -2233,7 +2388,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           quota.id,
           vendor_respondent_id,
           "QUOTA_FULL",
-          true
+          true,
         );
 
         const response = {
@@ -2245,11 +2400,11 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
         if (quota.survey.survey_send_by == "VENDOR") {
           const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken },
+            where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
             shareTokenDetails,
-            "QUOTA_FULL"
+            "QUOTA_FULL",
           );
         }
 
@@ -2302,8 +2457,8 @@ const redirectVendorFunction = async (shareTokenDetails, type) => {
       (type == "COMPLETED"
         ? process.env.INNOVATE_MR_SUCCESS_REDIRECT_URL
         : type == "QUOTA_FULL"
-        ? process.env.INNOVATE_MR_QUOTA_FULL_REDIRECT_URL
-        : process.env.INNOVATE_MR_TERMINATE_REDIRECT_URL) + vendor_token;
+          ? process.env.INNOVATE_MR_QUOTA_FULL_REDIRECT_URL
+          : process.env.INNOVATE_MR_TERMINATE_REDIRECT_URL) + vendor_token;
 
     console.log(">>>>> the value of the REDIRECT URL is : ", redirectUrl);
 
@@ -2399,12 +2554,12 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     });
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
-      where: { token_hash: token },
+      where: { token_hash: token, isTest: false },
       include: { survey: true },
     });
     console.log(
       ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
-      shareTokenDetails
+      shareTokenDetails,
     );
     if (!shareTokenDetails) {
       return res.status(404).json({ message: "Invalid Share Token" });
@@ -2416,7 +2571,7 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
       response.redirect_url = await redirectVendorFunction(
         shareTokenDetails,
-        "COMPLETED"
+        "COMPLETED",
       );
     }
     response.respondent = result;
@@ -2435,16 +2590,16 @@ export const markRespondentTerminated_v2 = async (req, res) => {
     const { shareToken, respondent_id } = req.query;
     console.log(
       ">>>>> the value of the QUERY in markRespondentTerminated_v2 is : ",
-      req.query
+      req.query,
     );
 
     const shareTokenDetails = await prisma.shareToken.findUnique({
-      where: { token_hash: shareToken },
+      where: { token_hash: shareToken, isTest: false },
       include: { survey: true },
     });
     console.log(
       ">>>>>>> the value of the SHARE TOKEN DETAILS is : ",
-      shareTokenDetails
+      shareTokenDetails,
     );
     if (!shareTokenDetails)
       return res.status(404).json({ message: "Invalid Share Token" });
@@ -2455,7 +2610,7 @@ export const markRespondentTerminated_v2 = async (req, res) => {
     });
     console.log(
       ">>>>> the value of the RESPONDENT in markRespondentTerminated_v2 is : ",
-      respondent
+      respondent,
     );
     if (!respondent)
       return res.status(404).json({ message: "Respondent not found" });
@@ -2488,13 +2643,13 @@ export const markRespondentTerminated_v2 = async (req, res) => {
     });
     console.log(
       ">>>>> the value of the RESULT in markRespondentTerminated_v2 is : ",
-      result
+      result,
     );
 
     if (shareTokenDetails.survey.survey_send_by === "VENDOR") {
       const redirectUrl = await redirectVendorFunction(
         shareTokenDetails,
-        "TERMINATED"
+        "TERMINATED",
       );
 
       return res.redirect(302, redirectUrl);

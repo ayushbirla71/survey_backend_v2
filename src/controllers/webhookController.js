@@ -14,25 +14,33 @@ export const innovateWebhook = async (req, res) => {
     });
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
+    const isTestUser = tk.toLowerCase().includes("testuser");
+    console.log(">>>>> the value of the IS TEST USER is : ", isTestUser);
+
     const existingToken = await prisma.shareToken.findFirst({
-      where: { vendor_respondent_id: tk + "_BR_" + pid },
+      where: { vendor_respondent_id: tk + "_BR_" + pid, isTest: isTestUser },
     });
     console.log(
       ">>>>> the value of the EXISTING TOKEN in innovateWebhook is : ",
-      existingToken
+      existingToken,
     );
     if (existingToken) {
       const surveyLink = `${process.env.FRONTEND_URL}/survey/${existingToken.token_hash}`;
       console.log(
         ">>>>> the value of the SURVEY LINK in innovateWebhook is : ",
-        surveyLink
+        surveyLink,
       );
       return res.redirect(surveyLink);
     }
 
     const token_hash = generateTokenHash();
     const token = await prisma.shareToken.create({
-      data: { surveyId, token_hash, vendor_respondent_id: tk + "_BR_" + pid },
+      data: {
+        surveyId,
+        token_hash,
+        vendor_respondent_id: tk + "_BR_" + pid,
+        isTest: isTestUser,
+      },
     });
     if (!token)
       return res.status(500).json({ message: "Token creation failed" });

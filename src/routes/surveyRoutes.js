@@ -24,7 +24,7 @@ router.post(
   "/",
   protect,
   validateRequest(createSurveyValidation),
-  createSurvey_v2
+  createSurvey_v2,
 );
 router.get("/", protect, getSurveys);
 router.get("/:id", getSurveyById);
@@ -32,7 +32,7 @@ router.put(
   "/:id",
   protect,
   validateRequest(updateSurveyValidation),
-  updateSurvey_v2
+  updateSurvey_v2,
 );
 router.delete("/:id", protect, deleteSurvey);
 
