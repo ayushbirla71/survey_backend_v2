@@ -514,6 +514,7 @@ model ScreeningQuestionOption {
 // VENDOR
 enum VendorKey {
   INNOVATEMR
+  INNOVATEMR_TEST
 }
 
 enum VendorAuthType {
