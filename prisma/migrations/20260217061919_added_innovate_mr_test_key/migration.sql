@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "VendorKey" ADD VALUE 'INNOVATEMR_TEST';
