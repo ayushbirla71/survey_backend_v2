@@ -1477,6 +1477,7 @@ const addSurveyToInnovaeMR = async (
   vendorId,
   totalTarget,
   screening,
+  deleteVendorTargets,
 ) => {
   try {
     console.log(
@@ -1720,6 +1721,44 @@ const addSurveyToInnovaeMR = async (
       is_target_added,
     );
 
+    if (deleteVendorTargets != null && deleteVendorTargets.length != 0) {
+      console.log("@@@@@@@@@@@@@@@@@@@ DELETING VENDOR TARGET.......... ");
+      for (const toDeleteTarget of deleteVendorTargets) {
+        try {
+          const question_key = toDeleteTarget.questionKey;
+          console.log(
+            ">>>> the value of the QUESTION KEY in REMOVE TARGET is : ",
+            question_key,
+          );
+          const removeVendorTargetResponse = await axios.delete(
+            `${base_url}/pega/group/${group_id}/${question_key}`,
+            {
+              headers: {
+                "x-access-token": `${credentials.token}`,
+              },
+            },
+          );
+          console.log(
+            ">>>> the value of the REMOVE VENDOR target response is : ",
+            removeVendorTargetResponse.data,
+          );
+          const validateRemoveTargetResponse = validateInnovateMRResponse(
+            removeVendorTargetResponse,
+            "Remove Target",
+          );
+          console.log(
+            ">>>>> the value of the validateRemoveTargetResponse from INNOVATE MR is : ",
+            validateRemoveTargetResponse,
+          );
+        } catch (error) {
+          console.error("Remove from Innovate MR Target Error : ", error);
+          throw new Error(
+            "Failed to Remove the Existing Targets on InnovateMR.",
+          );
+        }
+      }
+    }
+
     for (const target of vendorTargetPayload) {
       try {
         const method = is_target_added ? "put" : "post";
@@ -1838,7 +1877,7 @@ const addSurveyToInnovaeMR = async (
       const quotas = getGroupQuota.data.Quotas;
       console.log(">>>>>>> the value of the QUOTAS is : ", quotas);
 
-      const quota = quotas.find((q) => a.Id == quota_id);
+      const quota = quotas.find((q) => q.Id == quota_id);
       console.log(">>>>>> the value of the QUOTA is : ", quota);
 
       const updatedQuotaPayload = {
@@ -1885,6 +1924,66 @@ const addSurveyToInnovaeMR = async (
   }
 };
 
+const findRemovedTargetsFunction = async (surveyId, screening) => {
+  try {
+    console.log(
+      ">>>>> the value of the surveyId in REMOVE TARGET is : ",
+      surveyId,
+    );
+    console.log(">>>> the value of the SCREENING INPPUT is : ", screening);
+
+    const surveyQuota = await prisma.surveyQuota.findUnique({
+      where: { surveyId },
+      include: {
+        quota_options: {
+          include: { screeningQuestion: true, screeningOption: true },
+        },
+        quota_buckets: {
+          include: { screeningQuestion: true },
+        },
+      },
+    });
+    console.log(">>>>> the value of the survey QUOTA is : ", surveyQuota);
+    if (!surveyQuota) return [];
+    console.log(
+      ">>>>> the value of the survey QUOTA (OPTIONS) is : ",
+      surveyQuota.quota_options,
+    );
+    console.log(
+      ">>>>> the value of the survey QUOTA (BUCKET) is : ",
+      surveyQuota.quota_buckets,
+    );
+
+    const screeningQuestions =
+      await getScreeningQuestionsFromQuota(surveyQuota);
+    console.log(
+      ">>>>> the value of the SCREENING QUESTIONS is : ",
+      screeningQuestions,
+    );
+
+    // Step 1: Create a lookup set from screening
+    const screeningSet = new Set(
+      screening.map((item) => `${item.questionId}-${item.vendorQuestionId}`),
+    );
+
+    // Step 2: Filter screeningQuestions
+    const filtered = screeningQuestions.filter(
+      (item) =>
+        !screeningSet.has(`${item.questionId}-${item.vendorQuestionId}`),
+    );
+
+    console.log(">>>>> the value of the FILTERED is : ", filtered);
+
+    return filtered;
+  } catch (error) {
+    console.log(
+      ">>>>> the error in the FIND REMOVED Targets Functions is : ",
+      error,
+    );
+    return [];
+  }
+};
+
 export const updateQuota_v2 = async (req, res) => {
   try {
     const { surveyId } = req.params;
@@ -1910,6 +2009,18 @@ export const updateQuota_v2 = async (req, res) => {
     });
     console.log(">>>>> the value  of the SURVEY is : ", survey);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    let deleteVendorTargets = null;
+    if (survey.survey_send_by == "VENDOR") {
+      deleteVendorTargets = await findRemovedTargetsFunction(
+        surveyId,
+        filteredScreening,
+      );
+      console.log(
+        ">>>>> the alue of the DELETE VENDOR Targets is : ",
+        deleteVendorTargets,
+      );
+    }
 
     await prisma.$transaction(async (tx) => {
       const quota = await tx.surveyQuota.upsert({
@@ -1980,6 +2091,7 @@ export const updateQuota_v2 = async (req, res) => {
         vendorId,
         totalTarget,
         filteredScreening,
+        deleteVendorTargets,
       );
       console.log(
         ">>>>> the value  of the INNOVATE MR RESPONSE is : ",
@@ -1993,6 +2105,78 @@ export const updateQuota_v2 = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });
+  }
+};
+
+const getScreeningQuestionsFromQuota = async (quota) => {
+  try {
+    /**
+     * STEP 1: Group quota_options by screeningQuestionId
+     */
+    const questionMap = new Map();
+
+    quota.quota_options.forEach((option) => {
+      const questionId = option.screeningQuestionId;
+
+      if (!questionMap.has(questionId)) {
+        questionMap.set(questionId, {
+          questionId,
+          vendorQuestionId:
+            option?.screeningQuestion?.vendor_question_id || null,
+          id: questionId,
+          optionTargets: [],
+          buckets: [],
+          questionKey: option?.screeningQuestion?.question_key || null,
+        });
+      }
+
+      questionMap.get(questionId).optionTargets.push({
+        optionId: option.screeningOptionId,
+        option_id: option.screeningOptionId,
+        target: option.target_count,
+        current: option.current_count,
+        vendorOptionId: option?.screeningOption?.vendor_option_id || null,
+      });
+    });
+
+    quota.quota_buckets.forEach((b) => {
+      const questionId = b.screeningQuestionId;
+
+      if (!questionMap.has(questionId)) {
+        questionMap.set(questionId, {
+          questionId,
+          vendorQuestionId: b?.screeningQuestion?.vendor_question_id || null,
+          id: questionId,
+          optionTargets: [],
+          buckets: [],
+          questionKey: b?.screeningQuestion?.question_key || null,
+        });
+      }
+
+      questionMap.get(questionId).buckets.push({
+        bucketId: b.id,
+        id: b.id,
+        label: b.label,
+        operator: b.operator,
+        value: b.value,
+        target: b.target_count,
+        current: b.current_count,
+        is_active: b.is_active,
+      });
+    });
+
+    /**
+     * STEP 2: Convert map → array
+     */
+    const screeningquestions = Array.from(questionMap.values());
+
+    return screeningquestions;
+  } catch (error) {
+    console.log(
+      ">>>>> the error in the get Screening QUestions From Quota is : ",
+      error,
+    );
+    throw new Error("Failed to get Screening Question for quota.");
   }
 };
 
@@ -2013,7 +2197,9 @@ export const getQuota_v2 = async (req, res) => {
         quota_options: {
           include: { screeningQuestion: true, screeningOption: true },
         },
-        quota_buckets: true,
+        quota_buckets: {
+          include: { screeningQuestion: true },
+        },
       },
     });
     console.log(">>>>> the value  of the QUOTA is : ", quota);
@@ -2023,62 +2209,11 @@ export const getQuota_v2 = async (req, res) => {
     );
     if (!quota) return res.status(404).json({ message: "Quota not found" });
 
-    /**
-     * STEP 1: Group quota_options by screeningQuestionId
-     */
-    const questionMap = new Map();
-
-    quota.quota_options.forEach((option) => {
-      const questionId = option.screeningQuestionId;
-
-      if (!questionMap.has(questionId)) {
-        questionMap.set(questionId, {
-          questionId,
-          vendorQuestionId:
-            option?.screeningQuestion?.vendor_question_id || null,
-          id: questionId,
-          optionTargets: [],
-          buckets: [],
-        });
-      }
-
-      questionMap.get(questionId).optionTargets.push({
-        optionId: option.screeningOptionId,
-        option_id: option.screeningOptionId,
-        target: option.target_count,
-        current: option.current_count,
-        vendorOptionId: option?.screeningOption?.vendor_option_id || null,
-      });
-    });
-
-    quota.quota_buckets.forEach((b) => {
-      const questionId = b.screeningQuestionId;
-
-      if (!questionMap.has(questionId)) {
-        questionMap.set(questionId, {
-          questionId,
-          id: questionId,
-          optionTargets: [],
-          buckets: [],
-        });
-      }
-
-      questionMap.get(questionId).buckets.push({
-        bucketId: b.id,
-        id: b.id,
-        label: b.label,
-        operator: b.operator,
-        value: b.value,
-        target: b.target_count,
-        current: b.current_count,
-        is_active: b.is_active,
-      });
-    });
-
-    /**
-     * STEP 2: Convert map → array
-     */
-    const screeningquestions = Array.from(questionMap.values());
+    const screeningquestions = await getScreeningQuestionsFromQuota(quota);
+    console.log(
+      ">>>> the value of the SCREENING QUESTIONS is : ",
+      screeningquestions,
+    );
 
     /**
      * STEP 3: Final formatted response
@@ -2664,5 +2799,181 @@ export const markRespondentTerminated_v2 = async (req, res) => {
     return res
       .status(500)
       .json({ message: "Server error", error: error.message });
+  }
+};
+
+export const getEstimatedAmount = async (req, res) => {
+  try {
+    console.log(">>>>> the value of the BODY is : ", req.body);
+
+    const {
+      vendorId,
+      countryCode,
+      language,
+      totalTarget,
+      incidenceRate,
+      lengthOfSurvey,
+      numberOfDays,
+    } = req.body;
+
+    const vendorDetails = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      include: {
+        api_configs: { where: { is_default: true, is_active: true } },
+      },
+    });
+    console.log(
+      ">>>> the value of the VENDOR DETAILS in addSurveyToInnovaeMR is : ",
+      vendorDetails,
+    );
+    if (!vendorDetails) {
+      throw new Error("Vendor not found");
+    }
+    if (vendorDetails.api_configs.length === 0) {
+      throw new Error("No active API config found");
+    }
+
+    const apiConfig =
+      vendorDetails.api_configs[vendorDetails.api_configs.length - 1];
+    const { id: apiConfigId, base_url, credentials } = apiConfig;
+
+    const findEstimateResponse = await axios.post(
+      `${base_url}/pega/feasibility`,
+      {
+        Country: "India",
+        DaysInField: numberOfDays,
+        IncidenceRate: incidenceRate,
+        N: totalTarget,
+        LengthOfInterview: lengthOfSurvey,
+        Languages: language,
+      },
+      {
+        headers: {
+          "x-access-token": `${credentials.token}`,
+        },
+      },
+    );
+    console.log(
+      ">>>>>> the value of the FIND ESTIMATE RESPONSE is : ",
+      findEstimateResponse.data,
+    );
+    console.log(
+      ">>>>>> the value of the COMMON FEAS is : ",
+      findEstimateResponse.data.feasibility,
+    );
+
+    const estimatedPrice =
+      findEstimateResponse?.data?.feasibility?.commonFeas?.find(
+        (feas) => feas.days == numberOfDays,
+      )?.estimate;
+    console.log(">>>>> the value of the ESTIMATED PRICE is : ", estimatedPrice);
+
+    return res.status(200).send({
+      message: "Estimated amount fetched successfully.",
+      data: { estimatedAmount: estimatedPrice },
+    });
+  } catch (error) {
+    console.log(
+      ">>>>> the error in the GET Estimated Amount function is : ",
+      error,
+    );
+    return res
+      .status(500)
+      .send({ message: "Server error", error: error.message });
+  }
+};
+
+export const getExactAmount = async (req, res) => {
+  try {
+    const { surveyId, vendorId } = req.body;
+    console.log(">>>> the value of the SURVEY ID is : ", surveyId);
+    console.log(">>>>> the value of the VENDOR ID is : ", vendorId);
+
+    // Getting the Vendor Details with API CONFIG Details
+    const vendorDetails = await prisma.vendor.findUnique({
+      where: { id: vendorId },
+      include: {
+        api_configs: { where: { is_default: true, is_active: true } },
+      },
+    });
+    console.log(
+      ">>>> the value of the VENDOR DETAILS in addSurveyToInnovaeMR is : ",
+      vendorDetails,
+    );
+    if (!vendorDetails) {
+      throw new Error("Vendor not found");
+    }
+    if (vendorDetails.api_configs.length === 0) {
+      throw new Error("No active API config found");
+    }
+
+    const apiConfig =
+      vendorDetails.api_configs[vendorDetails.api_configs.length - 1];
+    const { id: apiConfigId, base_url, credentials } = apiConfig;
+
+    // Finding the Survey Vendor Config Details
+    const surveyVendorConfigDetails =
+      await prisma.surveyVendorConfig.findUnique({
+        where: { surveyId, vendorId },
+      });
+    console.log(
+      ">>>>> the value of the SURVEY VENDOR CONFIG is : ",
+      surveyVendorConfigDetails,
+    );
+    if (!surveyVendorConfigDetails)
+      throw new Error(
+        "Survey vendor config details not found for this survey.",
+      );
+    const vendorGroupId = surveyVendorConfigDetails.vendor_group_id;
+    console.log(
+      ">>>>>>> the value of the VENDOR gorup ID is : ",
+      vendorGroupId,
+    );
+    if (!vendorGroupId)
+      throw new Error("Group does not exist for this survey.");
+
+    // Making the AXIOS call on the INNOVATE MR to get the Exact price based on GROUPID
+    const getGroupFeasibilityResponse = await axios.get(
+      `${base_url}/pega/group/${vendorGroupId}/feasibility`,
+      {
+        headers: {
+          "x-access-token": `${credentials.token}`,
+        },
+      },
+    );
+    console.log(
+      ">>>>>. the value of the GET GROUP FEASIBILITY response is : ",
+      getGroupFeasibilityResponse.data,
+    );
+
+    // Validating the Innovate MR response
+    const validateGetGroupFeasibiltyResponse = validateInnovateMRResponse(
+      getGroupFeasibilityResponse,
+      "Get group feasibility",
+    );
+    console.log(
+      ">>>>> the value of the VALIDATE GET GROUP FEASIBILITY response is : ",
+      validateGetGroupFeasibiltyResponse,
+    );
+
+    // Extracting the Exact Price for the survey based on Group
+    const exactPrice =
+      getGroupFeasibilityResponse?.data?.Feasibility?.Common[0]?.Estimate;
+    console.log(">>>>> the value of the EXACT PRICE is : ", exactPrice);
+
+    // Have to update the Exact Price in the Config doc
+
+    return res.status(200).send({
+      message: "Exact value fetched successfully",
+      data: { exactAmount: exactPrice },
+    });
+  } catch (error) {
+    console.log(
+      ">>>>> the error in the GET EXACT AMOUNT Function is : ",
+      error,
+    );
+    return res
+      .status(500)
+      .send({ message: "Server error", error: error.message });
   }
 };

@@ -7,6 +7,8 @@ import {
   checkRespondentValidation,
   markRespondentValidation,
   terminateRespondentValidation,
+  getEstimatedAmountValidation,
+  getExactAmountValidation,
 } from "../validations/quotaValidation.js";
 import {
   createQuotaConfig,
@@ -23,6 +25,8 @@ import {
   checkRespondentQuota_v2,
   markRespondentCompleted_v2,
   markRespondentTerminated_v2,
+  getEstimatedAmount,
+  getExactAmount,
 } from "../controllers/quotaController.js";
 
 const router = express.Router();
@@ -36,7 +40,7 @@ router.post(
   "/surveys/:surveyId/quota",
   protect,
   validateRequest(quotaConfigValidation),
-  createQuotaConfig
+  createQuotaConfig,
 );
 
 /**
@@ -55,7 +59,7 @@ router.put(
   "/surveys/:surveyId/quota",
   protect,
   validateRequest(updateQuotaConfigValidation),
-  updateQuotaConfig
+  updateQuotaConfig,
 );
 
 /**
@@ -84,7 +88,7 @@ router.get("/surveys/:surveyId/status", protect, getQuotaStatus);
 router.post(
   "/:surveyId/check",
   validateRequest(checkRespondentValidation),
-  checkRespondentQuota
+  checkRespondentQuota,
 );
 
 /**
@@ -95,7 +99,7 @@ router.post(
 router.post(
   "/:surveyId/complete",
   validateRequest(markRespondentValidation),
-  markRespondentCompleted
+  markRespondentCompleted,
 );
 
 /**
@@ -106,40 +110,52 @@ router.post(
 router.post(
   "/:surveyId/terminate",
   validateRequest(terminateRespondentValidation),
-  markRespondentTerminated
+  markRespondentTerminated,
 );
 
 router.post(
   "/:surveyId/quota_v2",
   protect,
   // validateRequest(quotaConfigValidation),
-  updateQuota_v2
+  updateQuota_v2,
 );
 
 router.get(
   "/:surveyId/quota_v2",
   //  protect,
-  getQuota_v2
+  getQuota_v2,
 );
 
 router.get(
   "/:surveyId/quota-screening-questions",
   //  protect,
-  getFullScreeningQuestionsBasedOnQuota
+  getFullScreeningQuestionsBasedOnQuota,
 );
 
 router.post(
   "/:surveyId/check_v2",
   // validateRequest(checkRespondentValidation),
-  checkRespondentQuota_v2
+  checkRespondentQuota_v2,
 );
 
 router.post(
   "/:surveyId/complete_v2",
   validateRequest(markRespondentValidation),
-  markRespondentCompleted_v2
+  markRespondentCompleted_v2,
 );
 
 router.post("/terminate_v2", markRespondentTerminated_v2);
+
+router.post(
+  "/getEstimatedAmount",
+  validateRequest(getEstimatedAmountValidation),
+  getEstimatedAmount,
+);
+
+router.post(
+  "/getExactAmount",
+  validateRequest(getExactAmountValidation),
+  getExactAmount,
+);
 
 export default router;
