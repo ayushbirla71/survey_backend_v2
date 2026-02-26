@@ -2215,6 +2215,21 @@ export const getQuota_v2 = async (req, res) => {
       screeningquestions,
     );
 
+    let exactPrice = null;
+    if (survey.survey_send_by == "VENDOR") {
+      const surveyVendorConfigDetails =
+        await prisma.surveyVendorConfig.findUnique({
+          where: { surveyId },
+        });
+      console.log(
+        ">>>> the value of the SURVEY VENDOR CONFIG is : ",
+        surveyVendorConfigDetails,
+      );
+      if (surveyVendorConfigDetails)
+        exactPrice = surveyVendorConfigDetails?.quota_cost;
+    }
+    console.log(">>>>>> the value of the EXACT PRICE is : ", exactPrice);
+
     /**
      * STEP 3: Final formatted response
      */
@@ -2227,6 +2242,7 @@ export const getQuota_v2 = async (req, res) => {
       vendorId: quota.vendorId,
       screeningquestions,
     };
+    if (exactPrice) formattedQuota.exactPrice = exactPrice;
 
     return res.json(formattedQuota);
   } catch (error) {
@@ -2960,6 +2976,16 @@ export const getExactAmount = async (req, res) => {
     const exactPrice =
       getGroupFeasibilityResponse?.data?.Feasibility?.Common[0]?.Estimate;
     console.log(">>>>> the value of the EXACT PRICE is : ", exactPrice);
+
+    const updateExactCostInSurveyVendorConfig =
+      await prisma.surveyVendorConfig.update({
+        where: { id: surveyVendorConfigDetails.id },
+        data: { quota_cost: exactPrice },
+      });
+    console.log(
+      ">>>>> the value of the UPDATE Exact Cost In Survey Vendor Config is : ",
+      updateExactCostInSurveyVendorConfig,
+    );
 
     // Have to update the Exact Price in the Config doc
 
