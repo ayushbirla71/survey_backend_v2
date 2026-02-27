@@ -9,7 +9,7 @@ function hasInvalidCategory(categories) {
       !c ||
       typeof c.Id === "undefined" ||
       typeof c.Name !== "string" ||
-      c.Name.trim() === ""
+      c.Name.trim() === "",
   );
 }
 
@@ -21,7 +21,7 @@ export async function ingestInnovateMRQuestions({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required"
+      "vendorId, apiConfigId, countryCode, language are required",
     );
   }
 
@@ -41,11 +41,11 @@ export async function ingestInnovateMRQuestions({
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    }
+    },
   );
   console.log(
     ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
-    response.data
+    response.data,
   );
 
   const questions = response.data?.Questions;
@@ -127,7 +127,7 @@ export async function ingestInnovateMRQuestions({
                 vendor_option_id: String(o.Id),
                 option_text: o.OptionText.trim(),
                 order_index: index,
-              })
+              }),
             ),
           });
         }
@@ -224,7 +224,7 @@ export async function ingestInnovateMRQuestions_v2({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required"
+      "vendorId, apiConfigId, countryCode, language are required",
     );
   }
 
@@ -244,11 +244,11 @@ export async function ingestInnovateMRQuestions_v2({
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    }
+    },
   );
   console.log(
     ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
-    response.data
+    response.data,
   );
 
   const questions = response.data?.Questions;
@@ -288,10 +288,10 @@ export async function ingestInnovateMRQuestions_v2({
             data_type: "STRING",
             source: "VENDOR",
             primary_vendor_category_id: String(
-              q.Category.find((c) => c.Primary)?.Id
+              q.Category.find((c) => c.Primary)?.Id,
             ),
             primary_vendor_category_name: q.Category.find(
-              (c) => c.Primary
+              (c) => c.Primary,
             )?.Name.toUpperCase(),
             categories_meta: { original_category: q.Category },
             is_active: true,
@@ -307,10 +307,10 @@ export async function ingestInnovateMRQuestions_v2({
             vendorId,
             vendor_question_id: String(q.Id),
             primary_vendor_category_id: String(
-              q.Category.find((c) => c.Primary)?.Id
+              q.Category.find((c) => c.Primary)?.Id,
             ),
             primary_vendor_category_name: q.Category.find(
-              (c) => c.Primary
+              (c) => c.Primary,
             )?.Name.toUpperCase(),
             categories_meta: { original_category: q.Category },
             is_active: true,
@@ -330,7 +330,150 @@ export async function ingestInnovateMRQuestions_v2({
                 option_text: o.OptionText.trim(),
                 vendor_option_id: String(o.Id),
                 order_index: index,
-              })
+              }),
+            ),
+          });
+        }
+      }
+    });
+  }
+
+  return {
+    success: true,
+    totalQuestions: questions.length,
+    questions,
+  };
+}
+
+export async function ingestInnovateMRQuestions_v3({
+  vendorId,
+  apiConfigId,
+  countryCode,
+  language,
+}) {
+  if (!vendorId || !apiConfigId || !countryCode || !language) {
+    throw new Error(
+      "vendorId, apiConfigId, countryCode, language are required",
+    );
+  }
+
+  // 1️⃣ Fetch API config
+  const apiConfig = await prisma.vendorApiConfig.findUnique({
+    where: { id: apiConfigId },
+  });
+  if (!apiConfig || !apiConfig.is_active) {
+    throw new Error("Invalid or inactive VendorApiConfig");
+  }
+  console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
+
+  // 2️⃣ Call InnovateMR API
+  const response = await axios.get(
+    `${apiConfig.base_url}/pega/questions/${countryCode}/${language}`,
+    {
+      headers: {
+        "x-access-token": `${apiConfig.credentials.token}`,
+      },
+    },
+  );
+  // console.log(
+  //   ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
+  //   response.data,
+  // );
+
+  const questions = response.data?.Questions;
+  if (!Array.isArray(questions)) {
+    throw new Error("Invalid InnovateMR response format");
+  }
+
+  const BATCH_SIZE = 10;
+
+  for (let i = 0; i < questions.length; i += BATCH_SIZE) {
+    const batch = questions.slice(i, i + BATCH_SIZE);
+
+    await prisma.$transaction(async (tx) => {
+      for (const q of batch) {
+        // Skip question if categories are invalid
+        if (hasInvalidCategory(q.Category)) {
+          console.warn(`[SKIPPED QUESTION] Invalid category data`, {
+            questionKey: q.QuestionKey,
+            categories: q.Category,
+          });
+          continue;
+        }
+
+        const primaryCategory = q.Category.find((c) => c.Primary);
+
+        // explicit find for screening question
+        const existingQuestion = await tx.screeningQuestionDefinition.findFirst(
+          {
+            where: {
+              vendorId: vendorId,
+              question_key: q.QuestionKey,
+              country_code: countryCode,
+              language: language,
+            },
+          },
+        );
+        console.log(
+          ">>>>> the value of EXISTING QUestions is : ",
+          existingQuestion,
+        );
+
+        let question;
+
+        if (existingQuestion) {
+          // update screening question
+          question = await tx.screeningQuestionDefinition.update({
+            where: { id: existingQuestion.id },
+            data: {
+              question_text: q.QuestionText,
+              question_type: q.QuestionType,
+              vendor_question_id: String(q.Id),
+              data_type: "STRING",
+              source: "VENDOR",
+              primary_vendor_category_id: String(primaryCategory?.Id),
+              primary_vendor_category_name:
+                primaryCategory?.Name?.toUpperCase(),
+              categories_meta: { original_category: q.Category },
+              is_active: true,
+            },
+          });
+        } else {
+          // create Screening Question
+          question = await tx.screeningQuestionDefinition.create({
+            data: {
+              country_code: countryCode,
+              language,
+              question_key: q.QuestionKey,
+              question_text: q.QuestionText,
+              question_type: q.QuestionType,
+              data_type: "STRING",
+              source: "VENDOR",
+              vendorId,
+              vendor_question_id: String(q.Id),
+              primary_vendor_category_id: String(primaryCategory?.Id),
+              primary_vendor_category_name:
+                primaryCategory?.Name?.toUpperCase(),
+              categories_meta: { original_category: q.Category },
+              is_active: true,
+            },
+          });
+        }
+
+        await tx.screenQuestionOption.deleteMany({
+          where: { screeningQuestionId: question.id },
+        });
+
+        // Options (optional but still validate)
+        if (Array.isArray(q.Options) && q.Options.length > 0) {
+          await tx.screenQuestionOption.createMany({
+            data: q.Options.filter((o) => o && o.OptionText).map(
+              (o, index) => ({
+                screeningQuestionId: question.id,
+                option_text: o.OptionText.trim(),
+                vendor_option_id: String(o.Id),
+                order_index: index,
+              }),
             ),
           });
         }
@@ -365,7 +508,7 @@ export async function buildVendorTargetPayload(input) {
           if (mode === "RANGE" && Array.isArray(item.openEnded.ranges)) {
             const options = item.openEnded.ranges
               .filter(
-                (r) => typeof r.min === "number" && typeof r.max === "number"
+                (r) => typeof r.min === "number" && typeof r.max === "number",
               )
               .map((r) => `${r.min}-${r.max}`);
 
@@ -435,12 +578,12 @@ export function buildQuotaConditions(targets) {
  */
 export function validateInnovateMRResponse(
   response,
-  context = "InnovateMR API"
+  context = "InnovateMR API",
 ) {
   // 1. HTTP-level validation
   if (!response || response.status !== 200) {
     throw new Error(
-      `[${context}] HTTP error. Expected 200, got ${response?.status}`
+      `[${context}] HTTP error. Expected 200, got ${response?.status}`,
     );
   }
 
@@ -454,7 +597,7 @@ export function validateInnovateMRResponse(
   // 3. Business-level status
   if (data.apiStatus !== "success") {
     throw new Error(
-      `[${context}] InnovateMR failure: ${data.msg || "Unknown error"}`
+      `[${context}] InnovateMR failure: ${data.msg || "Unknown error"}`,
     );
   }
 

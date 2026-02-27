@@ -33,3 +33,20 @@ export const surveyCategories = [
   { id: "fc345678-c345-c345-c345-cdef01234567", name: "Technology" },
   { id: "fd456789-d456-d456-d456-def012345678", name: "Energy" },
 ];
+
+// I am only saving the Innovate MR TEST Credentials in the seeding
+export const vendorAndConfig = [
+  {
+    key: "INNOVATEMR_TEST",
+    name: "Innovate MR Test",
+    apiConfig: {
+      api_version: "v2",
+      base_url: "https://stgbuyerapi.innovatesample.com/api/v2",
+      auth_type: "API_KEY",
+      credentials: {
+        token:
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY5NGFmYzk3N2I4ODVlY2M0MTI4MDRmNSIsInVzcl9pZCI6NDAxOCwidXNyX3R5cGUiOiJjdXN0b21lciIsImlhdCI6MTc2NjUyMjAwN30.Bmzh2pnxXkAWnJWbd1ShQR8gcZK-vN8pHDjULiRhbIY",
+      },
+    },
+  },
+];

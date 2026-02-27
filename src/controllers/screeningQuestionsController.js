@@ -20,7 +20,7 @@ export const getScreeningQuestions = async (req, res) => {
     }
     console.log(
       ">>>>> the value of the FIND QUESTIONS WHERE is : ",
-      findQuestionsWhere
+      findQuestionsWhere,
     );
 
     const questions = await prisma.screeningQuestionDefinition.findMany({
@@ -48,7 +48,7 @@ export const getScreeningQuestions = async (req, res) => {
         });
         console.log(
           ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
-          fetchQuestionsFromVendor
+          fetchQuestionsFromVendor,
         );
 
         const questions = await prisma.screeningQuestionDefinition.findMany({
@@ -117,40 +117,85 @@ export const createScreeningQuestion = async (req, res) => {
     }
 
     const questionWithOptions = await prisma.$transaction(async (tx) => {
-      // 1. UPSERT QUESTION
-      const question = await tx.screeningQuestionDefinition.upsert({
+      const existingSystem = await tx.screeningQuestionDefinition.findFirst({
         where: {
-          system_question_unique: {
-            question_key,
-            country_code,
-            language,
-          },
-        },
-        update: {
-          question_text,
-          question_type,
-          data_type,
-          source,
-          is_active: true,
-
-          // Explicitly enforce NON-vendor state
           vendorId: null,
-          vendor_question_id: null,
-          primary_vendor_category_id: null,
-          primary_vendor_category_name: null,
-          categories_meta: null,
-        },
-        create: {
+          question_key,
           country_code,
           language,
-          question_key,
-          question_text,
-          question_type,
-          data_type,
-          source,
-          is_active: true,
         },
       });
+
+      let question;
+
+      if (existingSystem) {
+        question = await tx.screeningQuestionDefinition.update({
+          where: { id: existingSystem.id },
+          data: {
+            question_text,
+            question_type,
+            data_type,
+            source: "SYSTEM",
+            is_active: true,
+            // Explicitly enforce NON-vendor state
+            vendorId: null,
+            vendor_question_id: null,
+            primary_vendor_category_id: null,
+            primary_vendor_category_name: null,
+            categories_meta: null,
+          },
+        });
+      } else {
+        question = await tx.screeningQuestionDefinition.create({
+          data: {
+            country_code,
+            language,
+            question_key,
+            question_text,
+            question_type,
+            data_type,
+            source: "SYSTEM",
+            vendorId: null,
+            is_active: true,
+          },
+        });
+      }
+
+      // // 1. UPSERT QUESTION
+      // const question = await tx.screeningQuestionDefinition.upsert({
+      //   where: {
+      //     system_question_unique: {
+      //       source: "SYSTEM",
+      //       question_key,
+      //       country_code,
+      //       language,
+      //     },
+      //   },
+      //   update: {
+      //     question_text,
+      //     question_type,
+      //     data_type,
+      //     source,
+      //     is_active: true,
+
+      //     // Explicitly enforce NON-vendor state
+      //     vendorId: null,
+      //     vendor_question_id: null,
+      //     primary_vendor_category_id: null,
+      //     primary_vendor_category_name: null,
+      //     categories_meta: null,
+      //   },
+      //   create: {
+      //     country_code,
+      //     language,
+      //     question_key,
+      //     question_text,
+      //     question_type,
+      //     data_type,
+      //     source,
+      //     is_active: true,
+      //   },
+      // });
 
       await resetQuestionOptions(tx, question.id, options);
 
@@ -162,7 +207,7 @@ export const createScreeningQuestion = async (req, res) => {
     });
     console.log(
       ">>>>> the value of the QUESTION WITH OPTIONS is : ",
-      questionWithOptions
+      questionWithOptions,
     );
 
     return res.json({
@@ -225,7 +270,7 @@ export const updateScreeningQuestion = async (req, res) => {
     });
     console.log(
       ">>>>> the value of the QUESTION WITH OPTIONS is : ",
-      questionWithOptions
+      questionWithOptions,
     );
 
     return res.json({

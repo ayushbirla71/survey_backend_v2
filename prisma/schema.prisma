@@ -705,11 +705,8 @@ model ScreeningQuestionDefinition {
   survey_question_configs SurveyQuestionConfig[]
   quota_buckets  SurveyQuotaBucket[]
 
-  // ✅ For SYSTEM / CUSTOM questions
-  @@unique([question_key, country_code, language],name: "system_question_unique")
-
   // ✅ For VENDOR questions (vendorId must be non-null for these)
-  @@unique([vendorId, question_key, country_code, language],name: "vendor_question_unique")
+  @@unique([vendorId, question_key, country_code, language], name: "vendor_question_unique")
 }
 
 model ScreenQuestionOption {
