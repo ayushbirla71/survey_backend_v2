@@ -587,6 +587,8 @@ model SurveyVendorConfig {
   vendor_group_id  String?   // groupId
   is_target_added  Boolean  @default(false)
   vendor_quota_id  String?   // quotaId
+  quota_cost       Int?
+  is_cost_accepted Boolean  @default(false)
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt

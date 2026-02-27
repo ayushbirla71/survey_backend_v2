@@ -148,3 +148,18 @@ export const terminateRespondentValidation = Joi.object({
   respondent_id: Joi.string().uuid().required(),
   reason: Joi.string().optional(),
 });
+
+export const getEstimatedAmountValidation = Joi.object({
+  vendorId: Joi.string().uuid().required(),
+  countryCode: Joi.string().required(),
+  language: Joi.string().required(),
+  totalTarget: Joi.number().required(),
+  incidenceRate: Joi.number().required(),
+  lengthOfSurvey: Joi.number().required(),
+  numberOfDays: Joi.number().required(),
+});
+
+export const getExactAmountValidation = Joi.object({
+  surveyId: Joi.string().uuid().required(),
+  vendorId: Joi.string().uuid().required(),
+});
