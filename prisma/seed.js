@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { questionTypeMap, surveyCategories } from "./data.js";
+import { questionTypeMap, surveyCategories, vendorAndConfig } from "./data.js";
 
 const prisma = new PrismaClient();
 
@@ -33,6 +33,57 @@ async function main() {
     skipDuplicates: true, // critical for re-runs
   });
   console.log("Survey categories seeded successfully");
+
+  // ------ Vendor And its API Config -------
+  for (const vendorItem of vendorAndConfig) {
+    const { key, name, apiConfig } = vendorItem;
+
+    // 1️⃣ Upsert Vendor
+    const vendor = await prisma.vendor.upsert({
+      where: { key },
+      update: {
+        name,
+        is_active: true,
+      },
+      create: {
+        key,
+        name,
+        is_active: true,
+      },
+    });
+
+    console.log(`Vendor seeded: ${vendor.key}`);
+
+    // 2️⃣ Upsert Vendor API Config
+    await prisma.vendorApiConfig.upsert({
+      where: {
+        vendorId_api_version: {
+          vendorId: vendor.id,
+          api_version: apiConfig.api_version,
+        },
+      },
+      update: {
+        base_url: apiConfig.base_url,
+        auth_type: apiConfig.auth_type,
+        credentials: apiConfig.credentials,
+        is_default: true,
+        is_active: true,
+      },
+      create: {
+        vendorId: vendor.id,
+        api_version: apiConfig.api_version,
+        base_url: apiConfig.base_url,
+        auth_type: apiConfig.auth_type,
+        credentials: apiConfig.credentials,
+        is_default: true,
+        is_active: true,
+      },
+    });
+
+    console.log(
+      `API config seeded for ${vendor.key} (${apiConfig.api_version})`,
+    );
+  }
 
   console.log(`Seeding finished.`);
 }
