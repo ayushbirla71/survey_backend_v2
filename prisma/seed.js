@@ -1,5 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-import { questionTypeMap, surveyCategories, vendorAndConfig } from "./data.js";
+import {
+  adminUserDetails,
+  questionTypeMap,
+  surveyCategories,
+  vendorAndConfig,
+} from "./data.js";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
@@ -33,6 +39,30 @@ async function main() {
     skipDuplicates: true, // critical for re-runs
   });
   console.log("Survey categories seeded successfully");
+
+  // ------ Default Admin Users -------
+  for (const user of adminUserDetails) {
+    const hashedPassword = await bcrypt.hash(user.password, 10);
+
+    await prisma.user.upsert({
+      where: { email: user.email },
+      update: {
+        name: user.name,
+        mobile_no: user.mobile_no,
+        password: hashedPassword,
+        role: "SYSTEM_ADMIN", // Explicitly set role
+      },
+      create: {
+        name: user.name,
+        email: user.email,
+        mobile_no: user.mobile_no,
+        password: hashedPassword,
+        role: "SYSTEM_ADMIN",
+      },
+    });
+
+    console.log(`User seeded: ${user.email}`);
+  }
 
   // ------ Vendor And its API Config -------
   for (const vendorItem of vendorAndConfig) {

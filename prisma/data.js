@@ -34,6 +34,15 @@ export const surveyCategories = [
   { id: "fd456789-d456-d456-d456-def012345678", name: "Energy" },
 ];
 
+export const adminUserDetails = [
+  {
+    name: "Admin",
+    email: "admin@survey96.com",
+    mobile_no: "9988776655",
+    password: "Admin@123",
+  },
+];
+
 // I am only saving the Innovate MR TEST Credentials in the seeding
 export const vendorAndConfig = [
   {
