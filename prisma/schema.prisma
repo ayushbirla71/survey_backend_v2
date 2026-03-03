@@ -67,6 +67,7 @@ model User {
   password   String
   role       Role     @default(USER)
   theme      String   @default("LIGHT")
+  is_blocked Boolean  @default(false)
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
