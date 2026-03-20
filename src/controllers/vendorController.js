@@ -7,6 +7,7 @@ import {
   ingestInnovateMRQuestions_v2,
   validateInnovateMRResponse,
 } from "../utils/vendorUtils.js";
+import { updateJobStatusForVendor } from "../services/vendorUpdateJobStatusService.js";
 
 /**
  * CREATE VENDOR
@@ -743,58 +744,20 @@ export const updateVendorJobStatus = async (req, res) => {
 
     const job_id = surveyVendorConfigData.vendor_survey_id;
     console.log(">>>>> the value of the JOB ID is : ", job_id);
-    const { base_url, credentials } = surveyVendorConfigData.api_config;
-
-    const updateVendorJobStatusResponse = await axios.put(
-      `${base_url}/pega/job/${job_id}/status`,
-      {
-        Status: status,
-      },
-      {
-        headers: {
-          "x-access-token": `${credentials.token}`,
-        },
-      },
-    );
-    console.log(
-      ">>>>> the value of the updateVendorJobStatusResponse is : ",
-      updateVendorJobStatusResponse.data,
-    );
-    const validatedUpdateVendorJobStatusResponse = validateInnovateMRResponse(
-      updateVendorJobStatusResponse,
-      "Update Vendor Job Status",
-    );
-    console.log(
-      ">>>>> the value of the validatedUpdateVendorJobStatusResponse from INNOVATE MR is : ",
-      validatedUpdateVendorJobStatusResponse,
-    );
 
     const group_id = surveyVendorConfigData.vendor_group_id;
     console.log(">>>>> the value of the GROUP ID is : ", group_id);
 
-    const updateVendorGroupStatusResponse = await axios.put(
-      `${base_url}/pega/group/${group_id}/status`,
-      {
-        Status: status,
-      },
-      {
-        headers: {
-          "x-access-token": `${credentials.token}`,
-        },
-      },
-    );
-    console.log(
-      ">>>>> the value of the updateVendorGroupStatusResponse is : ",
-      updateVendorGroupStatusResponse.data,
-    );
-    const validatedUpdateVendorGroupStatusResponse = validateInnovateMRResponse(
-      updateVendorGroupStatusResponse,
-      "Update Vendor Group Status",
-    );
-    console.log(
-      ">>>>> the value of the validatedUpdateVendorGroupStatusResponse from INNOVATE MR is : ",
-      validatedUpdateVendorGroupStatusResponse,
-    );
+    const { base_url, credentials } = surveyVendorConfigData.api_config;
+
+    await updateJobStatusForVendor({
+      vendorId,
+      base_url,
+      credentials,
+      job_id,
+      group_id,
+      status,
+    });
 
     const surveyVendorConfig = await prisma.surveyVendorConfig.update({
       where: { surveyId, vendorId },

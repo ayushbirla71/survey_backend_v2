@@ -1,4 +1,5 @@
 import prisma from "../config/db.js";
+import { fetchQuestionsFromVendor } from "../services/vendorQuestionService.js";
 import { ingestInnovateMRQuestions_v2 } from "../utils/vendorUtils.js";
 
 export const getScreeningQuestions = async (req, res) => {
@@ -23,44 +24,33 @@ export const getScreeningQuestions = async (req, res) => {
       findQuestionsWhere,
     );
 
-    const questions = await prisma.screeningQuestionDefinition.findMany({
+    let questions = await prisma.screeningQuestionDefinition.findMany({
       where: findQuestionsWhere,
       include: { options: true },
     });
     console.log(">>>>> the value of the SCREENING QUESTIONS is : ", questions);
 
-    if (questions.length === 0) {
-      if (source === "VENDOR") {
-        const apiConfig = await prisma.vendorApiConfig.findFirst({
-          where: { vendorId, is_default: true },
-          select: { id: true },
-        });
-        console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
-        if (!apiConfig) {
-          return res.status(404).json({ message: "API Config not found" });
-        }
-
-        const fetchQuestionsFromVendor = await ingestInnovateMRQuestions_v2({
-          vendorId,
-          apiConfigId: apiConfig.id,
-          countryCode,
-          language,
-        });
-        console.log(
-          ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
-          fetchQuestionsFromVendor,
-        );
-
-        const questions = await prisma.screeningQuestionDefinition.findMany({
-          where: findQuestionsWhere,
-          include: { options: true },
-        });
-
-        return res.json({
-          message: "Screening Questions retrieved successfully",
-          data: questions,
-        });
+    if (questions.length === 0 && source === "VENDOR") {
+      const apiConfig = await prisma.vendorApiConfig.findFirst({
+        where: { vendorId, is_default: true },
+        select: { id: true },
+      });
+      console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
+      if (!apiConfig) {
+        return res.status(404).json({ message: "API Config not found" });
       }
+
+      await fetchQuestionsFromVendor({
+        vendorId,
+        apiConfigId: apiConfig.id,
+        countryCode,
+        language,
+      });
+
+      questions = await prisma.screeningQuestionDefinition.findMany({
+        where: findQuestionsWhere,
+        include: { options: true },
+      });
     }
 
     return res.json({
@@ -286,6 +276,10 @@ export const updateScreeningQuestion = async (req, res) => {
 export const deleteScreeningQuestion = async (req, res) => {
   try {
     const { id } = req.params;
+
+    await prisma.surveyQuotaOption.deleteMany({
+      where: { screeningQuestionId: id },
+    });
 
     await prisma.screeningQuestionDefinition.delete({ where: { id } });
 
