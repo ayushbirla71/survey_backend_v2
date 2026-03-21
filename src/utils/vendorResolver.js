@@ -1,7 +1,9 @@
 import { findInnovateMRExactFeasibility } from "./innovateMR/exactFeasibility.js";
+import { getInnovateMRRedirectUrl } from "./innovateMR/getRedirectUrl.js";
 import { addSurveyToInnovaeMR } from "./innovateMR/innovateMRSurvey.js";
 import { updateInnovateMRJobStatus } from "./innovateMR/updateJobStatus.js";
 import { findSurvey96ExactFeasibility } from "./survey96/exactFeasibility.js";
+import { getSurvey96RedirectUrl } from "./survey96/getRedirectUrl.js";
 import { addSurveyToSurvey96 } from "./survey96/survey96Survey.js";
 import { updateSurvey96JobStatus } from "./survey96/updateJobStatus.js";
 import {
@@ -31,4 +33,10 @@ export const vendorJobStatusUpdateHandlers = {
   INNOVATEMR: updateInnovateMRJobStatus,
   INNOVATEMR_TEST: updateInnovateMRJobStatus,
   SURVEY96: updateSurvey96JobStatus,
+};
+
+export const vendorRedirectUrlHandlers = {
+  INNOVATEMR: getInnovateMRRedirectUrl,
+  INNOVATEMR_TEST: getInnovateMRRedirectUrl,
+  SURVEY96: getSurvey96RedirectUrl,
 };

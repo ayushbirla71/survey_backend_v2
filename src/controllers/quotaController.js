@@ -14,6 +14,7 @@ import {
 } from "../utils/vendorUtils.js";
 import { pushSurveyToVendor } from "../services/vendorSurveyService.js";
 import { fetchGroupFeasibilityFromVendor } from "../services/vendorExactFeasibilityService.js";
+import { getRedirectUrlFromVendor } from "../services/vendorRedirectUrlService.js";
 
 /**
  * @desc Create quota configuration for a survey
@@ -1869,6 +1870,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
+          quota.vendorId,
           shareTokenDetails,
           "TERMINATED",
         );
@@ -1896,6 +1898,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           where: { token_hash: shareToken, isTest: false },
         });
         response.redirect_url = await redirectVendorFunction(
+          quota.vendorId,
           shareTokenDetails,
           "QUOTA_FULL",
         );
@@ -1946,6 +1949,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
               where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
+              quota.vendorId,
               shareTokenDetails,
               "TERMINATED",
             );
@@ -1974,6 +1978,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
               where: { token_hash: shareToken, isTest: false },
             });
             response.redirect_url = await redirectVendorFunction(
+              quota.vendorId,
               shareTokenDetails,
               "QUOTA_FULL",
             );
@@ -2008,6 +2013,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
             where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
+            quota.vendorId,
             shareTokenDetails,
             "TERMINATED",
           );
@@ -2036,6 +2042,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
             where: { token_hash: shareToken, isTest: false },
           });
           response.redirect_url = await redirectVendorFunction(
+            quota.vendorId,
             shareTokenDetails,
             "QUOTA_FULL",
           );
@@ -2080,27 +2087,26 @@ export const checkRespondentQuota_v2 = async (req, res) => {
   }
 };
 
-const redirectVendorFunction = async (shareTokenDetails, type) => {
+const redirectVendorFunction = async (vendor_id, shareTokenDetails, type) => {
   try {
     const vendor_token =
       shareTokenDetails.vendor_respondent_id.split("_BR_")[0];
     console.log(">>>>> the value of the VENDOR TOKEN is : ", vendor_token);
 
-    const redirectUrl =
-      (type == "COMPLETED"
-        ? process.env.INNOVATE_MR_SUCCESS_REDIRECT_URL
-        : type == "QUOTA_FULL"
-          ? process.env.INNOVATE_MR_QUOTA_FULL_REDIRECT_URL
-          : process.env.INNOVATE_MR_TERMINATE_REDIRECT_URL) + vendor_token;
+    const redirectUrl = await getRedirectUrlFromVendor({
+      vendorId: vendor_id,
+      vendor_token,
+      type,
+    });
+
+    // const redirectUrl =
+    //   (type == "COMPLETED"
+    //     ? process.env.INNOVATE_MR_SUCCESS_REDIRECT_URL
+    //     : type == "QUOTA_FULL"
+    //       ? process.env.INNOVATE_MR_QUOTA_FULL_REDIRECT_URL
+    //       : process.env.INNOVATE_MR_TERMINATE_REDIRECT_URL) + vendor_token;
 
     console.log(">>>>> the value of the REDIRECT URL is : ", redirectUrl);
-
-    // const redirectResponse = await axios.get(redirectUrl);
-    // console.log(
-    //   ">>>>> the value of the redirectResponse is : ",
-    //   redirectResponse.data
-    // );
-    // return redirectResponse.data;
 
     return redirectUrl;
   } catch (error) {
@@ -2118,6 +2124,7 @@ export const markRespondentCompleted_v2 = async (req, res) => {
       where: { id: respondent_id },
       include: { surveyQuota: true },
     });
+    console.log(">>>>> the value of the RESPONDENT is : ", respondent);
 
     if (!respondent) {
       return res.status(404).json({ message: "Respondent not found" });
@@ -2203,6 +2210,7 @@ export const markRespondentCompleted_v2 = async (req, res) => {
     };
     if (shareTokenDetails.survey.survey_send_by == "VENDOR") {
       response.redirect_url = await redirectVendorFunction(
+        respondent.surveyQuota?.vendorId,
         shareTokenDetails,
         "COMPLETED",
       );
@@ -2281,6 +2289,7 @@ export const markRespondentTerminated_v2 = async (req, res) => {
 
     if (shareTokenDetails.survey.survey_send_by === "VENDOR") {
       const redirectUrl = await redirectVendorFunction(
+        respondent.surveyQuota?.vendorId,
         shareTokenDetails,
         "TERMINATED",
       );

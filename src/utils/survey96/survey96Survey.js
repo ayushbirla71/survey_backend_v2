@@ -211,7 +211,7 @@ export const addSurveyToSurvey96 = async ({
           loi: 2,
           live_survey_url:
             process.env.BACKEND_URL +
-            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+            `/webhook/survey96/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
           country_code: "IN",
           language: "ENGLISH",
         },
