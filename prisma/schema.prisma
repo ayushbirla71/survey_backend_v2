@@ -722,6 +722,8 @@ model ScreenQuestionOption {
   order_index   Int
 
   quota_options SurveyQuotaOption[] @relation("QuotaOptionToScreenOption")
+ 
+  @@unique([screeningQuestionId, vendor_option_id])
 }
 
 model SurveyQuestionConfig {
