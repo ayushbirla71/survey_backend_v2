@@ -63,6 +63,46 @@ export const getScreeningQuestions = async (req, res) => {
   }
 };
 
+export const updateScreeningQuestionsListFromVendorSide = async (req, res) => {
+  try {
+    const {
+      source = "SYSTEM",
+      vendorId,
+      countryCode = "IN",
+      language = "ENGLISH",
+    } = req.query;
+
+    const apiConfig = await prisma.vendorApiConfig.findFirst({
+      where: { vendorId, is_default: true },
+      select: { id: true },
+    });
+    console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
+    if (!apiConfig) {
+      return res.status(404).json({ message: "API Config not found" });
+    }
+
+    await fetchQuestionsFromVendor({
+      vendorId,
+      apiConfigId: apiConfig.id,
+      countryCode,
+      language,
+    });
+
+    const questions = await prisma.screeningQuestionDefinition.findMany({
+      where: { country_code: countryCode, language, source, vendorId },
+      include: { options: true },
+    });
+
+    return res.json({
+      message: "Screening Questions retrieved successfully",
+      data: questions,
+    });
+  } catch (error) {
+    console.error("Update Screening Questions List api Error:", error);
+    return res.status(500).json({ message: "Internal Server error" });
+  }
+};
+
 async function resetQuestionOptions(tx, questionId, options) {
   await tx.screenQuestionOption.deleteMany({
     where: { screeningQuestionId: questionId },

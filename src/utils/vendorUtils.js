@@ -690,24 +690,49 @@ export async function ingestSurvey96Questions({
           },
         });
 
-        await tx.screenQuestionOption.deleteMany({
-          where: { screeningQuestionId: question.id },
-        });
+        // await tx.screenQuestionOption.deleteMany({
+        //   where: { screeningQuestionId: question.id },
+        // });
 
-        // Options (optional but still validate)
-        if (
-          Array.isArray(q.question_options) &&
-          q.question_options.length > 0
-        ) {
-          await tx.screenQuestionOption.createMany({
-            data: q.question_options
-              .filter((o) => o && o.option_text)
-              .map((o, index) => ({
+        // // Options (optional but still validate)
+        // if (
+        //   Array.isArray(q.question_options) &&
+        //   q.question_options.length > 0
+        // ) {
+        //   await tx.screenQuestionOption.createMany({
+        //     data: q.question_options
+        //       .filter((o) => o && o.option_text)
+        //       .map((o, index) => ({
+        //         screeningQuestionId: question.id,
+        //         option_text: o.option_text.trim(),
+        //         vendor_option_id: String(o.id),
+        //         order_index: index,
+        //       })),
+        //   });
+        // }
+
+        for (const [index, o] of q.question_options.entries()) {
+          if (!o || !o.option_text) continue;
+          const vendorOptionId = o.id ? String(o.id) : null;
+
+          await tx.screenQuestionOption.upsert({
+            where: {
+              // you need a unique constraint for this
+              screeningQuestionId_vendor_option_id: {
                 screeningQuestionId: question.id,
-                option_text: o.option_text.trim(),
-                vendor_option_id: String(o.id),
-                order_index: index,
-              })),
+                vendor_option_id: vendorOptionId,
+              },
+            },
+            update: {
+              option_text: o.option_text.trim(),
+              order_index: index,
+            },
+            create: {
+              screeningQuestionId: question.id,
+              option_text: o.option_text.trim(),
+              vendor_option_id: vendorOptionId,
+              order_index: index,
+            },
           });
         }
       }
