@@ -636,7 +636,7 @@ export async function ingestSurvey96Questions({
     },
   );
   console.log(
-    ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
+    ">>>>> the value of the RESPONSE from SURVEY 96 is : ",
     response.data,
   );
 
@@ -668,7 +668,7 @@ export async function ingestSurvey96Questions({
             vendor_question_id: String(q.id),
             data_type: "STRING",
             source: "VENDOR",
-            primary_vendor_category_id: "Not applicable",
+            primary_vendor_category_id: q.category?.id,
             primary_vendor_category_name: q.category?.name.toUpperCase(),
             categories_meta: { original_category: q.category },
             is_active: true,
@@ -683,7 +683,7 @@ export async function ingestSurvey96Questions({
             source: "VENDOR",
             vendorId,
             vendor_question_id: String(q.id),
-            primary_vendor_category_id: "Not applicable",
+            primary_vendor_category_id: q.category?.id,
             primary_vendor_category_name: q.category?.name.toUpperCase(),
             categories_meta: { original_category: q.category },
             is_active: true,
