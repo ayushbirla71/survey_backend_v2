@@ -66,7 +66,6 @@ const prepareSurvey96TargetPayload = async (screening) => {
 
             return {
               question_id: vendorQuestionId,
-              // option_ids: q.buckets.map((b) => `${b.value.min}-${b.value.max}`),
               conditions,
             };
           }
@@ -76,7 +75,7 @@ const prepareSurvey96TargetPayload = async (screening) => {
           // -------------------------
           case "ZIPCODES": {
             const conditions = validBuckets.map((b) => ({
-              operator: "IN",
+              operator: b.operator,
               value_text: Array.isArray(b.value)
                 ? b.value.join(",")
                 : String(b.value),
@@ -84,9 +83,6 @@ const prepareSurvey96TargetPayload = async (screening) => {
 
             return {
               question_id: vendorQuestionId,
-              // option_ids: q.buckets.flatMap((b) =>
-              //   Array.isArray(b.value) ? b.value : [b.value],
-              // ),
               conditions,
             };
           }
