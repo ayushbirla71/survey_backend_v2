@@ -27,35 +27,65 @@ const prepareSurvey96TargetPayload = async (screening) => {
 
     const payload = await Promise.all(
       screening.map(async (q) => {
-        const hasTargets = q.optionTargets && q.optionTargets.length > 0;
         const vendorQuestionId = q.vendorQuestionId;
 
-        if (hasTargets) {
-          const opts = q.optionTargets
+        // -------------------------
+        // ✅ MCQ
+        // -------------------------
+        if (q.optionTargets && q.optionTargets.length > 0) {
+          const optionIds = q.optionTargets
             .filter((o) => o.target > 0)
             .map((o) => o.vendorOptionId);
 
-          return opts.length > 0
-            ? { question_id: vendorQuestionId, option_ids: opts }
+          return optionIds.length > 0
+            ? { question_id: vendorQuestionId, option_ids: optionIds }
             : null;
         }
 
+        // -------------------------
+        // ✅ MCQ
+        // -------------------------
         const def = defsById[q.questionId];
         if (!def) return null;
 
+        // FILTER only active buckets
+        const validBuckets = (q.buckets || []).filter((b) => b.target > 0);
+
+        if (!validBuckets.length) return null;
+
         switch (def.question_key) {
-          case "AGE":
+          // -------------------------
+          // AGE / NUMERIC
+          // -------------------------
+          case "AGE": {
+            const conditions = validBuckets.map((b) => ({
+              operator: b.operator, // BETWEEN
+              value_min: b.value?.min,
+              value_max: b.value?.max,
+            }));
+
             return {
               question_id: vendorQuestionId,
-              option_ids: q.buckets.map((b) => `${b.value.min}-${b.value.max}`),
+              conditions,
             };
-          case "ZIPCODES":
+          }
+
+          // -------------------------
+          // ZIPCODES (TEXT / LIST)
+          // -------------------------
+          case "ZIPCODES": {
+            const conditions = validBuckets.map((b) => ({
+              operator: b.operator,
+              value_text: Array.isArray(b.value)
+                ? b.value.join(",")
+                : String(b.value),
+            }));
+
             return {
               question_id: vendorQuestionId,
-              option_ids: q.buckets.flatMap((b) =>
-                Array.isArray(b.value) ? b.value : [b.value],
-              ),
+              conditions,
             };
+          }
           default:
             return null;
         }
@@ -366,6 +396,7 @@ export const addSurveyToSurvey96 = async ({
           data: {
             question_id: target.question_id,
             option_ids: target.option_ids,
+            conditions: target.conditions,
           },
 
           headers: {

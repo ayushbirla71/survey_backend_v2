@@ -636,7 +636,7 @@ export async function ingestSurvey96Questions({
     },
   );
   console.log(
-    ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
+    ">>>>> the value of the RESPONSE from SURVEY 96 is : ",
     response.data,
   );
 
@@ -666,9 +666,9 @@ export async function ingestSurvey96Questions({
             question_text: q.question_text,
             question_type: q.question_type,
             vendor_question_id: String(q.id),
-            data_type: "STRING",
+            data_type: q.question_key == "AGE" ? "NUMBER" : "STRING",
             source: "VENDOR",
-            primary_vendor_category_id: "Not applicable",
+            primary_vendor_category_id: q.category?.id,
             primary_vendor_category_name: q.category?.name.toUpperCase(),
             categories_meta: { original_category: q.category },
             is_active: true,
@@ -679,11 +679,11 @@ export async function ingestSurvey96Questions({
             question_key: q.question_key,
             question_text: q.question_text,
             question_type: q.question_type,
-            data_type: "STRING",
+            data_type: q.question_key == "AGE" ? "NUMBER" : "STRING",
             source: "VENDOR",
             vendorId,
             vendor_question_id: String(q.id),
-            primary_vendor_category_id: "Not applicable",
+            primary_vendor_category_id: q.category?.id,
             primary_vendor_category_name: q.category?.name.toUpperCase(),
             categories_meta: { original_category: q.category },
             is_active: true,
@@ -725,7 +725,7 @@ export async function ingestSurvey96Questions({
             },
             update: {
               option_text: o.option_text.trim(),
-              order_index: index,
+              // order_index: index,
             },
             create: {
               screeningQuestionId: question.id,

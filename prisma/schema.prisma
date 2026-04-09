@@ -792,13 +792,14 @@ model SurveyQuotaOption {
 }
 
 enum QuotaOperator {
-  EQ          // equals
-  IN          // value in list
+  // EQ          // equals
+  // IN          // value in list
   BETWEEN     // numeric range
-  GTE
-  LTE
-  INTERSECTS  // array overlaps list
-  REGEX       // text pattern (optional)
+  GREATER_THAN
+  LESS_THAN
+  EQUALS
+  // INTERSECTS  // array overlaps list
+  // REGEX       // text pattern (optional)
 }
 
 model SurveyQuotaBucket {
