@@ -1818,9 +1818,9 @@ function matchBucket(bucket, answerValue) {
   if (op === "BETWEEN")
     return Number(answerValue) >= v.min && Number(answerValue) <= v.max;
   if (op === "IN") return Array.isArray(v) && v.includes(String(answerValue));
-  if (op === "EQ") return String(answerValue) === String(v);
-  if (op === "GTE") return Number(answerValue) >= Number(v);
-  if (op === "LTE") return Number(answerValue) <= Number(v);
+  if (op === "EQUALS") return String(answerValue) === String(v);
+  if (op === "GREATER_THAN") return Number(answerValue) >= Number(v);
+  if (op === "LESS_THAN") return Number(answerValue) <= Number(v);
   if (op === "INTERSECTS") {
     if (!Array.isArray(answerValue) || !Array.isArray(v)) return false;
     const set = new Set(answerValue.map(String));
@@ -1841,6 +1841,7 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       where: { surveyId },
       include: { quota_options: true, quota_buckets: true, survey: true },
     });
+    console.log(">>>>> the value of the QUOTA is : ", JSON.stringify(quota));
 
     if (!quota || !quota.survey) {
       return res.status(404).json({
@@ -1921,6 +1922,10 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         bucketsByQuestion.set(b.screeningQuestionId, []);
       bucketsByQuestion.get(b.screeningQuestionId).push(b);
     }
+    console.log(
+      ">>>>>> the value of the BUCKET BY QUESTION is : ",
+      bucketsByQuestion,
+    );
 
     const normalizedAnswers = [];
 
@@ -1992,7 +1997,9 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       }
 
       const buckets = bucketsByQuestion.get(ans.screeningQuestionId) ?? [];
+      console.log(">>>>> the value of the BUCKETS is : ", buckets);
       const matched = buckets.find((b) => matchBucket(b, ans.answerValue));
+      console.log(">>>>> the value of the MATCHED is : ", matched);
 
       if (!matched) {
         const respondent = await failRespondent(
