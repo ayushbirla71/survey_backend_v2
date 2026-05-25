@@ -1,5 +1,5 @@
 import express from "express";
-import { protect } from "../middleware/authMiddleware.js";
+import { admin_middleware, protect } from "../middleware/authMiddleware.js";
 import validateRequest from "../middleware/validateRequest.js";
 import {
   createSurveyValidation,
@@ -13,6 +13,7 @@ import {
   deleteSurvey,
   createSurvey_v2,
   updateSurvey_v2,
+  getSurveysByUser,
 } from "../controllers/surveyController.js";
 
 const router = express.Router();
@@ -27,6 +28,7 @@ router.post(
   createSurvey_v2,
 );
 router.get("/", protect, getSurveys);
+router.get("/allSurvey/:userId", admin_middleware, getSurveysByUser);
 router.get("/:id", getSurveyById);
 router.put(
   "/:id",

@@ -534,3 +534,53 @@ export const deleteSurvey = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+export const getSurveysByUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // validation
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId is required",
+      });
+    }
+
+    const surveys = await prisma.survey.findMany({
+      where: {
+        userId: userId,
+        is_deleted: false,
+      },
+
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        surveyCategory: true,
+        _count: {
+          select: {
+            questions: true,
+            responses: true,
+          },
+        },
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      total: surveys.length,
+      data: surveys,
+    });
+  } catch (error) {
+    console.log(">>>>> the error in the getSurveysByUser is : ", error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
