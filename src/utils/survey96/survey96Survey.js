@@ -103,6 +103,8 @@ export const addSurveyToSurvey96 = async ({
   survey,
   vendorId,
   totalTarget,
+  incidenceRate,
+  lengthOfInterview,
   screening,
   deleteVendorTargets,
 }) => {
@@ -235,10 +237,10 @@ export const addSurveyToSurvey96 = async ({
         {
           name: survey.title + " - Group",
           required_completes: totalTarget,
-          incidence_rate: 80,
+          incidence_rate: incidenceRate || 80,
           cpi: 1,
           max_cpi: 1.8,
-          loi: 2,
+          loi: lengthOfInterview || 2,
           live_survey_url:
             process.env.BACKEND_URL +
             `/webhook/survey96/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
@@ -295,9 +297,9 @@ export const addSurveyToSurvey96 = async ({
       const updateGroupPayload = {
         name: group.name,
         required_completes: totalTarget,
-        incidence_rate: group.incidence_rate,
+        incidence_rate: incidenceRate || group.incidence_rate,
         cpi: group.cpi,
-        loi: group.loi,
+        loi: lengthOfInterview || group.loi,
         live_survey_url: group.live_survey_url,
         test_survey_url: group.live_survey_url,
         // Color: 0, // White

@@ -73,6 +73,8 @@ export const addSurveyToInnovaeMR = async ({
   survey,
   vendorId,
   totalTarget,
+  incidenceRate,
+  lengthOfInterview,
   screening,
   deleteVendorTargets,
 }) => {
@@ -205,10 +207,10 @@ export const addSurveyToInnovaeMR = async ({
         {
           Name: survey.title + " - Group",
           N: totalTarget,
-          IncidenceRate: 80,
+          IncidenceRate: incidenceRate || 80,
           EstCostPerInterview: 1,
           MaximumCostPerInterview: 1.8,
-          LengthOfInterview: 2,
+          LengthOfInterview: lengthOfInterview || 2,
           LiveSurveyUrl:
             process.env.BACKEND_URL +
             `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
@@ -267,9 +269,9 @@ export const addSurveyToInnovaeMR = async ({
       const updateGroupPayload = {
         Name: group.Name,
         N: totalTarget,
-        IncidenceRate: group.IncidenceRate,
+        IncidenceRate: incidenceRate || group.IncidenceRate,
         EstCostPerInterview: group.EstCostPerInterview,
-        LengthOfInterview: group.LengthOfInterview,
+        LengthOfInterview: lengthOfInterview || group.LengthOfInterview,
         LiveSurveyUrl: group.LiveSurveyUrl,
         TestSurveyUrl: group.LiveSurveyUrl,
         Color: 0, // White

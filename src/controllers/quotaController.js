@@ -1477,8 +1477,16 @@ export const updateQuota_v2 = async (req, res) => {
     console.log(">>>>> the value  of the SURVEY ID is : ", surveyId);
 
     console.log(">>>>> the value  of the REQUEST BODY is : ", req.body);
-    const { enabled, totalTarget, screening, vendorId, countryCode, language } =
-      req.body;
+    const {
+      enabled,
+      totalTarget,
+      screening,
+      vendorId,
+      countryCode,
+      language,
+      incidenceRate,
+      lengthOfInterview,
+    } = req.body;
 
     const filteredScreening = screening.map((q) => ({
       questionId: q.questionId,
@@ -1577,6 +1585,8 @@ export const updateQuota_v2 = async (req, res) => {
         survey,
         vendorId,
         totalTarget,
+        incidenceRate,
+        lengthOfInterview,
         screening: filteredScreening,
         deleteVendorTargets,
       });
