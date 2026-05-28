@@ -32,6 +32,12 @@ const prepareAnswerData = async (answers) => {
       case "number":
         answerValue = a.answer_value || "";
         break;
+      // case "number":
+      //   answerValue =
+      //     a.answer_value !== undefined && a.answer_value !== null
+      //       ? Number(a.answer_value)
+      //       : null;
+      //   break;
 
       // ✅ SINGLE OPTION TYPES
       case "multiple choice":
@@ -631,7 +637,22 @@ export const getSurveyAnalytics = async (req, res) => {
           },
         },
         share_tokens: true,
-        quota: true,
+        // quota: true,
+        quota: {
+          include: {
+            quota_options: {
+              include: {
+                screeningQuestion: true,
+                screeningOption: true,
+              },
+            },
+            quota_buckets: {
+              include: {
+                screeningQuestion: true,
+              },
+            },
+          },
+        },
       },
     });
     console.log(">>>>>????? the value of the SURVEY is : ", survey);
@@ -1224,12 +1245,68 @@ export const getSurveyAnalytics = async (req, res) => {
         avgTime, // minutes
         npsScore: overallNpsScore, // Average of all NPS-type question scores
       },
+      // quota: {
+      //   target_count: survey.quota?.target_count,
+      //   current_count: survey.quota?.current_count,
+      //   qualified_count: survey.quota?.qualified_count,
+      //   terminated_count: survey.quota?.terminated_count,
+      //   quota_full_count: survey.quota?.quota_full_count,
+      // },
       quota: {
         target_count: survey.quota?.target_count,
         current_count: survey.quota?.current_count,
         qualified_count: survey.quota?.qualified_count,
         terminated_count: survey.quota?.terminated_count,
         quota_full_count: survey.quota?.quota_full_count,
+
+        quota_options:
+          survey.quota?.quota_options?.map((q) => ({
+            id: q.id,
+
+            question: {
+              id: q.screeningQuestion?.id,
+              question_key: q.screeningQuestion?.question_key,
+              question_text: q.screeningQuestion?.question_text,
+              question_type: q.screeningQuestion?.question_type,
+            },
+
+            option: {
+              id: q.screeningOption?.id,
+              text: q.screeningOption?.option_text,
+              vendor_option_id: q.screeningOption?.vendor_option_id,
+            },
+
+            target_count: q.target_count,
+            current_count: q.current_count,
+
+            completion_percentage:
+              q.target_count > 0
+                ? Math.round((q.current_count / q.target_count) * 100)
+                : 0,
+          })) || [],
+
+        quota_buckets:
+          survey.quota?.quota_buckets?.map((b) => ({
+            id: b.id,
+
+            label: b.label,
+
+            question: {
+              id: b.screeningQuestion?.id,
+              question_text: b.screeningQuestion?.question_text,
+            },
+
+            operator: b.operator,
+            value: b.value,
+
+            target_count: b.target_count,
+            current_count: b.current_count,
+
+            completion_percentage:
+              b.target_count > 0
+                ? Math.round((b.current_count / b.target_count) * 100)
+                : 0,
+          })) || [],
       },
       questionResults,
       individualResponses,
