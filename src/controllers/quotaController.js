@@ -1847,6 +1847,14 @@ export const checkRespondentQuota_v2 = async (req, res) => {
     const { vendor_respondent_id, screeningAnswers, shareToken } = req.body;
     console.log(">>>>> the value  of the REQUEST BODY is : ", req.body);
 
+    const shareTokenDetails = await prisma.shareToken.findUnique({
+      where: { token_hash: shareToken },
+    });
+    console.log(
+      ">>>>> the value  of the SHARE TOKEN DETAILS is : ",
+      shareTokenDetails,
+    );
+
     const quota = await prisma.surveyQuota.findUnique({
       where: { surveyId },
       include: { quota_options: true, quota_buckets: true, survey: true },
@@ -1863,6 +1871,14 @@ export const checkRespondentQuota_v2 = async (req, res) => {
 
     // console.log(">>>>> the value  of the QUOTA is : ", quota);
     if (!quota.is_active || quota.target_count <= 0) {
+      if (shareTokenDetails.isTest == true) {
+        return res.status(200).json({
+          qualified: false,
+          status: "QUOTA_INACTIVE",
+          message: "Quota is not active",
+          respondent_id: null,
+        });
+      }
       const respondent = await failRespondent(
         quota.id,
         vendor_respondent_id,
@@ -1877,9 +1893,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       };
 
       if (quota.survey.survey_send_by == "VENDOR") {
-        const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken, isTest: false },
-        });
         response.redirect_url = await redirectVendorFunction(
           quota.vendorId,
           shareTokenDetails,
@@ -1890,6 +1903,15 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       return res.status(200).json(response);
     }
     if (quota.current_count >= quota.target_count) {
+      if (shareTokenDetails.isTest == true) {
+        return res.status(200).json({
+          qualified: false,
+          status: "QUOTA_FULL",
+          message: "Quota is full",
+          respondent_id: null,
+        });
+      }
+
       const respondent = await failRespondent(
         quota.id,
         vendor_respondent_id,
@@ -1905,9 +1927,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       };
 
       if (quota.survey.survey_send_by == "VENDOR") {
-        const shareTokenDetails = await prisma.shareToken.findUnique({
-          where: { token_hash: shareToken, isTest: false },
-        });
         response.redirect_url = await redirectVendorFunction(
           quota.vendorId,
           shareTokenDetails,
@@ -1946,6 +1965,15 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         const qOpt = quotaOptionMap.get(key);
 
         if (!qOpt) {
+          if (shareTokenDetails.isTest == true) {
+            return res.status(200).json({
+              qualified: false,
+              status: "OPTION_NOT_ALLOWED",
+              message: "Screening disqualified",
+              respondent_id: null,
+            });
+          }
+
           const respondent = await failRespondent(
             quota.id,
             vendor_respondent_id,
@@ -1960,9 +1988,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           };
 
           if (quota.survey.survey_send_by == "VENDOR") {
-            const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken, isTest: false },
-            });
             response.redirect_url = await redirectVendorFunction(
               quota.vendorId,
               shareTokenDetails,
@@ -1974,6 +1999,15 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         }
 
         if (qOpt.current_count >= qOpt.target_count) {
+          if (shareTokenDetails.isTest == true) {
+            return res.status(200).json({
+              qualified: false,
+              status: "QUOTA_FULL",
+              message: "Option quota full",
+              respondent_id: null,
+            });
+          }
+
           const respondent = await failRespondent(
             quota.id,
             vendor_respondent_id,
@@ -1989,9 +2023,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
           };
 
           if (quota.survey.survey_send_by == "VENDOR") {
-            const shareTokenDetails = await prisma.shareToken.findUnique({
-              where: { token_hash: shareToken, isTest: false },
-            });
             response.redirect_url = await redirectVendorFunction(
               quota.vendorId,
               shareTokenDetails,
@@ -2012,6 +2043,15 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       console.log(">>>>> the value of the MATCHED is : ", matched);
 
       if (!matched) {
+        if (shareTokenDetails.isTest == true) {
+          return res.status(200).json({
+            qualified: false,
+            status: "NO_BUCKET_MATCH",
+            message: "Screening disqualified",
+            respondent_id: null,
+          });
+        }
+
         const respondent = await failRespondent(
           quota.id,
           vendor_respondent_id,
@@ -2026,9 +2066,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         };
 
         if (quota.survey.survey_send_by == "VENDOR") {
-          const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken, isTest: false },
-          });
           response.redirect_url = await redirectVendorFunction(
             quota.vendorId,
             shareTokenDetails,
@@ -2040,6 +2077,15 @@ export const checkRespondentQuota_v2 = async (req, res) => {
       }
 
       if (matched.current_count >= matched.target_count) {
+        if (shareTokenDetails.isTest == true) {
+          return res.status(200).json({
+            qualified: false,
+            status: "QUOTA_FULL",
+            message: "Open-ended bucket full",
+            respondent_id: null,
+          });
+        }
+
         const respondent = await failRespondent(
           quota.id,
           vendor_respondent_id,
@@ -2055,9 +2101,6 @@ export const checkRespondentQuota_v2 = async (req, res) => {
         };
 
         if (quota.survey.survey_send_by == "VENDOR") {
-          const shareTokenDetails = await prisma.shareToken.findUnique({
-            where: { token_hash: shareToken, isTest: false },
-          });
           response.redirect_url = await redirectVendorFunction(
             quota.vendorId,
             shareTokenDetails,
@@ -2072,23 +2115,25 @@ export const checkRespondentQuota_v2 = async (req, res) => {
     }
 
     // Commit qualification atomically
-    const respondent = await prisma.$transaction(async (tx) => {
-      const r = await tx.quotaRespondent.create({
-        data: {
-          surveyQuotaId: quota.id,
-          vendor_respondent_id,
-          answers: normalizedAnswers,
-          status: "QUALIFIED",
-        },
-      });
+    if (!shareTokenDetails.isTest) {
+      const respondent = await prisma.$transaction(async (tx) => {
+        const r = await tx.quotaRespondent.create({
+          data: {
+            surveyQuotaId: quota.id,
+            vendor_respondent_id,
+            answers: normalizedAnswers,
+            status: "QUALIFIED",
+          },
+        });
 
-      await tx.surveyQuota.update({
-        where: { id: quota.id },
-        data: { qualified_count: { increment: 1 } },
-      });
+        await tx.surveyQuota.update({
+          where: { id: quota.id },
+          data: { qualified_count: { increment: 1 } },
+        });
 
-      return r;
-    });
+        return r;
+      });
+    }
 
     return res.status(200).json({
       qualified: true,
