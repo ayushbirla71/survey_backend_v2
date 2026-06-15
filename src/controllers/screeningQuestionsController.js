@@ -313,19 +313,58 @@ export const updateScreeningQuestion = async (req, res) => {
   }
 };
 
+// export const deleteScreeningQuestion = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     await prisma.surveyQuotaOption.deleteMany({
+//       where: { screeningQuestionId: id },
+//     });
+
+//     await prisma.screeningQuestionDefinition.delete({ where: { id } });
+
+//     return res.json({ message: "Screening Question deleted" });
+//   } catch (error) {
+//     console.error("Delete Screening Question Error:", error);
+//     return res.status(500).json({ message: "Server error" });
+//   }
+// };
+
 export const deleteScreeningQuestion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await prisma.surveyQuotaOption.deleteMany({
-      where: { screeningQuestionId: id },
+    await prisma.$transaction(async (tx) => {
+      // Delete quota options
+      await tx.surveyQuotaOption.deleteMany({
+        where: {
+          screeningQuestionId: id,
+        },
+      });
+
+      // Delete quota buckets
+      await tx.surveyQuotaBucket.deleteMany({
+        where: {
+          screeningQuestionId: id,
+        },
+      });
+
+      // Delete question
+      await tx.screeningQuestionDefinition.delete({
+        where: {
+          id,
+        },
+      });
     });
 
-    await prisma.screeningQuestionDefinition.delete({ where: { id } });
-
-    return res.json({ message: "Screening Question deleted" });
+    return res.json({
+      message: "Screening Question deleted",
+    });
   } catch (error) {
     console.error("Delete Screening Question Error:", error);
-    return res.status(500).json({ message: "Server error" });
+
+    return res.status(500).json({
+      message: error.message,
+    });
   }
 };
