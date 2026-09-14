@@ -1,16 +1,18 @@
 import axios from "axios";
-import prisma from "../../config/db.js";
+import { Op } from "sequelize";
+import {
+  ScreeningQuestionDefinition,
+  Vendor,
+  VendorApiConfig,
+  SurveyVendorConfig,
+} from "../../models/index.js";
 
 const prepareSurvey96TargetPayload = async (screening) => {
   try {
     console.log(
       ">>>> the value of the SCREENING in prepareSurvey96TargetPayload is : ",
-      screening,
+      screening
     );
-    // console.log(
-    //   ">>>>> the value  of the SCREENING (OPTIONS) in prepareSurvey96TargetPayload is : ",
-    //   screening[0].optionTargets,
-    // );
     if (!screening || !Array.isArray(screening)) return [];
 
     // extract questionIds without option targets for bulk lookup
@@ -19,8 +21,8 @@ const prepareSurvey96TargetPayload = async (screening) => {
       .map((q) => q.questionId);
 
     // bulk fetch definitions instead of N queries
-    const defs = await prisma.screeningQuestionDefinition.findMany({
-      where: { id: { in: noTargetIds } },
+    const defs = await ScreeningQuestionDefinition.findAll({
+      where: { id: { [Op.in]: noTargetIds } },
     });
 
     const defsById = Object.fromEntries(defs.map((d) => [d.id, d]));
@@ -29,9 +31,7 @@ const prepareSurvey96TargetPayload = async (screening) => {
       screening.map(async (q) => {
         const vendorQuestionId = q.vendorQuestionId;
 
-        // -------------------------
-        // ✅ MCQ
-        // -------------------------
+        // MCQ
         if (q.optionTargets && q.optionTargets.length > 0) {
           const optionIds = q.optionTargets
             .filter((o) => o.target > 0)
@@ -42,9 +42,6 @@ const prepareSurvey96TargetPayload = async (screening) => {
             : null;
         }
 
-        // -------------------------
-        // ✅ MCQ
-        // -------------------------
         const def = defsById[q.questionId];
         if (!def) return null;
 
@@ -54,12 +51,9 @@ const prepareSurvey96TargetPayload = async (screening) => {
         if (!validBuckets.length) return null;
 
         switch (def.question_key) {
-          // -------------------------
-          // AGE / NUMERIC
-          // -------------------------
           case "AGE": {
             const conditions = validBuckets.map((b) => ({
-              operator: b.operator, // BETWEEN
+              operator: b.operator,
               value_min: b.value?.min,
               value_max: b.value?.max,
             }));
@@ -70,9 +64,6 @@ const prepareSurvey96TargetPayload = async (screening) => {
             };
           }
 
-          // -------------------------
-          // ZIPCODES (TEXT / LIST)
-          // -------------------------
           case "ZIPCODES": {
             const conditions = validBuckets.map((b) => ({
               operator: b.operator,
@@ -89,7 +80,7 @@ const prepareSurvey96TargetPayload = async (screening) => {
           default:
             return null;
         }
-      }),
+      })
     );
 
     return payload.filter(Boolean);
@@ -111,35 +102,39 @@ export const addSurveyToSurvey96 = async ({
   try {
     console.log(
       ">>>> the value of the SURVEY in addSurveyToSurvey96 is : ",
-      survey,
+      survey
     );
     console.log(
       ">>>> the value of the VENDOR ID in addSurveyToSurvey96 is : ",
-      vendorId,
+      vendorId
     );
     console.log(
       ">>>> the value of the TOTAL TARGET in addSurveyToSurvey96 is : ",
-      totalTarget,
+      totalTarget
     );
     console.log(
       ">>>> the value of the SCREENING in addSurveyToSurvey96 is : ",
-      screening,
+      screening
     );
 
-    const vendorDetails = await prisma.vendor.findUnique({
-      where: { id: vendorId },
-      include: {
-        api_configs: { where: { is_default: true, is_active: true } },
-      },
+    const vendorDetails = await Vendor.findByPk(vendorId, {
+      include: [
+        {
+          model: VendorApiConfig,
+          as: "api_configs",
+          where: { is_default: true, is_active: true },
+          required: false,
+        },
+      ],
     });
     console.log(
       ">>>> the value of the VENDOR DETAILS in addSurveyToSurvey96 is : ",
-      vendorDetails,
+      vendorDetails
     );
     if (!vendorDetails) {
       throw new Error("Vendor not found");
     }
-    if (vendorDetails.api_configs.length === 0) {
+    if (!vendorDetails.api_configs || vendorDetails.api_configs.length === 0) {
       throw new Error("No active API config found");
     }
 
@@ -148,14 +143,12 @@ export const addSurveyToSurvey96 = async ({
     const { id: apiConfigId, base_url, credentials } = apiConfig;
 
     // Check if JOB already created on VENDOR side
-    const isSurveyVendorConfigExist = await prisma.surveyVendorConfig.findFirst(
-      {
-        where: { surveyId: survey.id, vendorId: vendorDetails.id },
-      },
-    );
+    const isSurveyVendorConfigExist = await SurveyVendorConfig.findOne({
+      where: { surveyId: survey.id, vendorId: vendorDetails.id },
+    });
     console.log(
       ">>>> the value of the isSurveyVendorConfigExist in addSurveyToSurvey96 is : ",
-      isSurveyVendorConfigExist,
+      isSurveyVendorConfigExist
     );
 
     let job_id = isSurveyVendorConfigExist
@@ -163,7 +156,7 @@ export const addSurveyToSurvey96 = async ({
       : null;
     console.log(
       ">>>> the value of the JOB ID in addSurveyToSurvey96 is : ",
-      job_id,
+      job_id
     );
 
     let surveyVendorConfigId = isSurveyVendorConfigExist
@@ -171,7 +164,7 @@ export const addSurveyToSurvey96 = async ({
       : null;
     console.log(
       ">>>> the value of the surveyVendorConfigId in addSurveyToSurvey96 is : ",
-      surveyVendorConfigId,
+      surveyVendorConfigId
     );
 
     if (!job_id) {
@@ -186,36 +179,26 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the createJobResponse from INNOVATE MR is : ",
-        createJobResponse.data,
+        createJobResponse.data
       );
-      //   const validatedCreateJobResponse = validateInnovateMRResponse(
-      //     createJobResponse,
-      //     "Create Job",
-      //   );
-      //   console.log(
-      //     ">>>>> the value of the validatedCreateJobResponse from INNOVATE MR is : ",
-      //     validatedCreateJobResponse,
-      //   );
 
       job_id = createJobResponse.data?.data?.id;
       console.log(">>>>> the value of the JOB ID is : ", job_id);
 
-      const createSurveyVendorConfig = await prisma.surveyVendorConfig.create({
-        data: {
-          surveyId: survey.id,
-          vendorId: vendorDetails.id,
-          api_config_id: apiConfigId,
-          vendor_survey_id: job_id,
-          status: "CREATED",
-        },
+      const createSurveyVendorConfig = await SurveyVendorConfig.create({
+        surveyId: survey.id,
+        vendorId: vendorDetails.id,
+        api_config_id: apiConfigId,
+        vendor_survey_id: job_id,
+        status: "CREATED",
       });
       console.log(
         ">>>>> the value of the createSurveyVendorConfig is : ",
-        createSurveyVendorConfig,
+        createSurveyVendorConfig
       );
 
       surveyVendorConfigId = createSurveyVendorConfig.id;
@@ -227,7 +210,7 @@ export const addSurveyToSurvey96 = async ({
 
     console.log(
       ">>>>>> the value of the GROUP iD in addSurveyToSurvey96 is : ",
-      group_id,
+      group_id
     );
 
     if (!group_id) {
@@ -243,7 +226,7 @@ export const addSurveyToSurvey96 = async ({
           loi: lengthOfInterview || 2,
           live_survey_url:
             process.env.BACKEND_URL +
-            `/webhook/survey96/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+            `/webhook/survey96/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`,
           country_code: "IN",
           language: "ENGLISH",
         },
@@ -251,31 +234,23 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
-        createGroupResponse.data,
+        createGroupResponse.data
       );
-      //   const validatedCreateGroupResponse = validateInnovateMRResponse(
-      //     createGroupResponse,
-      //     "Create Group",
-      //   );
-      //   console.log(
-      //     ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
-      //     validatedCreateGroupResponse,
-      //   );
 
       group_id = createGroupResponse.data?.data?.id;
       console.log(">>>>> the value of the GROUP ID is : ", group_id);
 
-      const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { vendor_group_id: group_id },
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfig = await svc.update({
+        vendor_group_id: group_id,
       });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfig is : ",
-        updateSurveyVendorConfig,
+        updateSurveyVendorConfig
       );
     } else {
       // Group already created have to update it
@@ -285,11 +260,11 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the GET GROUP DETAILS is : ",
-        getGroupDetails.data,
+        getGroupDetails.data
       );
       const group = getGroupDetails.data?.data;
       console.log(">>>>>> the value of the GROUP is : ", group);
@@ -302,8 +277,7 @@ export const addSurveyToSurvey96 = async ({
         loi: lengthOfInterview || group.loi,
         live_survey_url: group.live_survey_url,
         test_survey_url: group.live_survey_url,
-        // Color: 0, // White
-        priority: 1, // Normal
+        priority: 1,
         device_type: group.device_type,
         country_code: "IN",
         language: "ENGLISH",
@@ -312,7 +286,7 @@ export const addSurveyToSurvey96 = async ({
       };
       console.log(
         ">>>> the value of the UPDATE GROUP PAYLOAD is : ",
-        updateGroupPayload,
+        updateGroupPayload
       );
 
       const updateGroup = await axios.put(
@@ -322,26 +296,18 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the UPDATE GROUP is : ",
-        updateGroup.data,
+        updateGroup.data
       );
-      //   const validatedUpdateGroupResponse = validateInnovateMRResponse(
-      //     updateGroup,
-      //     "Update Group",
-      //   );
-      //   console.log(
-      //     ">>>>> the value of the validatedUpdateGroupResponse from INNOVATE MR is : ",
-      //     validatedUpdateGroupResponse,
-      //   );
     }
 
     const vendorTargetPayload = await prepareSurvey96TargetPayload(screening);
     console.log(
       ">>>> the value of the VENDOR TARGET PAYLOAD in add SURVEY to SURVEY96 is : ",
-      vendorTargetPayload,
+      vendorTargetPayload
     );
 
     const is_target_added = isSurveyVendorConfigExist
@@ -349,7 +315,7 @@ export const addSurveyToSurvey96 = async ({
       : false;
     console.log(
       ">>>>> the value of the IS SURVEY ADDED is : ",
-      is_target_added,
+      is_target_added
     );
 
     if (deleteVendorTargets != null && deleteVendorTargets.length != 0) {
@@ -359,7 +325,7 @@ export const addSurveyToSurvey96 = async ({
           const question_id = toDeleteTarget.questionId;
           console.log(
             ">>>> the value of the QUESTION ID in REMOVE TARGET is : ",
-            question_id,
+            question_id
           );
           const removeVendorTargetResponse = await axios.delete(
             `${base_url}/group/${group_id}/${question_id}`,
@@ -367,20 +333,12 @@ export const addSurveyToSurvey96 = async ({
               headers: {
                 "x-access-token": `${credentials.token}`,
               },
-            },
+            }
           );
           console.log(
             ">>>> the value of the REMOVE VENDOR target response is : ",
-            removeVendorTargetResponse.data,
+            removeVendorTargetResponse.data
           );
-          //   const validateRemoveTargetResponse = validateInnovateMRResponse(
-          //     removeVendorTargetResponse,
-          //     "Remove Target",
-          //   );
-          //   console.log(
-          //     ">>>>> the value of the validateRemoveTargetResponse from INNOVATE MR is : ",
-          //     validateRemoveTargetResponse,
-          //   );
         } catch (error) {
           console.error("Remove from SURVEY96 Target Error : ", error);
           throw new Error("Failed to Remove the Existing Targets on Survey96.");
@@ -408,16 +366,8 @@ export const addSurveyToSurvey96 = async ({
         });
         console.log(
           ">>>> the value of the createVendorTargetResponse is : ",
-          createVendorTargetResponse.data,
+          createVendorTargetResponse.data
         );
-        // const validatedCreateVendorTargetResponse = validateInnovateMRResponse(
-        //   createVendorTargetResponse,
-        //   "Create Vendor Target",
-        // );
-        // console.log(
-        //   ">>>>> the value of the validatedCreateVendorTargetResponse from INNOVATE MR is : ",
-        //   validatedCreateVendorTargetResponse,
-        // );
       } catch (error) {
         console.error("Distribute Over Survey96 Error:", error);
         throw new Error("Failed to distribute over Survey96.");
@@ -425,21 +375,20 @@ export const addSurveyToSurvey96 = async ({
     }
 
     if (!is_target_added) {
-      const updateSurveyVendorConfigWithTarget =
-        await prisma.surveyVendorConfig.update({
-          where: { id: surveyVendorConfigId },
-          data: { is_target_added: true },
-        });
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfigWithTarget = await svc.update({
+        is_target_added: true,
+      });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
-        updateSurveyVendorConfigWithTarget,
+        updateSurveyVendorConfigWithTarget
       );
     }
 
     const conditions = vendorTargetPayload;
     console.log(
       ">>>> the value of the CONDITIONS in add Survey to Survey96 is : ",
-      conditions,
+      conditions
     );
 
     let quota_id = isSurveyVendorConfigExist
@@ -462,32 +411,23 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the addQuotaToGroupResponse is : ",
-        addQuotaToGroupResponse.data,
+        addQuotaToGroupResponse.data
       );
-      //   const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
-      //     addQuotaToGroupResponse,
-      //     "Add Quota to Group",
-      //   );
-      //   console.log(
-      //     ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
-      //     validatedAddQuotaToGroupResponse,
-      //   );
 
       quota_id = addQuotaToGroupResponse.data?.data?.id;
       console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
 
-      const updateSurveyVendorConfigWithQuota =
-        await prisma.surveyVendorConfig.update({
-          where: { id: surveyVendorConfigId },
-          data: { vendor_quota_id: JSON.stringify(quota_id) },
-        });
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfigWithQuota = await svc.update({
+        vendor_quota_id: JSON.stringify(quota_id),
+      });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
-        updateSurveyVendorConfigWithQuota,
+        updateSurveyVendorConfigWithQuota
       );
     } else {
       // Quota already exists have to update it
@@ -498,7 +438,7 @@ export const addSurveyToSurvey96 = async ({
       });
       console.log(
         ">>>>> the value of the GET GROUP QUOTA is : ",
-        getGroupQuota.data,
+        getGroupQuota.data
       );
 
       const quotas = getGroupQuota.data?.data;
@@ -517,7 +457,7 @@ export const addSurveyToSurvey96 = async ({
       };
       console.log(
         ">>>>>> the value of the UPDATE QUOTA PAYLOAD is : ",
-        updatedQuotaPayload,
+        updatedQuotaPayload
       );
 
       const updateGroupQuota = await axios.put(
@@ -527,21 +467,12 @@ export const addSurveyToSurvey96 = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>> the value of the UPDATE GROUP QUOTA is : ",
-        updateGroupQuota.data,
+        updateGroupQuota.data
       );
-
-      //   const validatedUpdateQuotaToGroupResponse = validateInnovateMRResponse(
-      //     updateGroupQuota,
-      //     "Update Quota to Group",
-      //   );
-      //   console.log(
-      //     ">>>>> the value of the validatedUpdateQuotaToGroupResponse from INNOVATE MR is : ",
-      //     validatedUpdateQuotaToGroupResponse,
-      //   );
     }
 
     return true;

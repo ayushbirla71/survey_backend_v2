@@ -1,4 +1,4 @@
-import prisma from "../config/db.js";
+import { Vendor } from "../models/index.js";
 import { vendorQuestionFetchers } from "../utils/vendorResolver.js";
 
 export const fetchQuestionsFromVendor = async ({
@@ -7,9 +7,8 @@ export const fetchQuestionsFromVendor = async ({
   countryCode,
   language,
 }) => {
-  const vendor = await prisma.vendor.findUnique({
-    where: { id: vendorId },
-    select: { key: true }, // INNOVATEMR / INNOVATEMR / SURVEY96
+  const vendor = await Vendor.findByPk(vendorId, {
+    attributes: ["key"],
   });
 
   if (!vendor) {

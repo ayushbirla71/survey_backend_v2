@@ -1,5 +1,12 @@
 import axios from "axios";
-import prisma from "../config/db.js";
+import sequelize, {
+  VendorApiConfig,
+  VendorQuestionLibrary,
+  VendorQuestionCategory,
+  VendorQuestionOption,
+  ScreeningQuestionDefinition,
+  ScreenQuestionOption,
+} from "../models/index.js";
 
 function hasInvalidCategory(categories) {
   if (!Array.isArray(categories) || categories.length === 0) return true;
@@ -9,7 +16,7 @@ function hasInvalidCategory(categories) {
       !c ||
       typeof c.Id === "undefined" ||
       typeof c.Name !== "string" ||
-      c.Name.trim() === "",
+      c.Name.trim() === ""
   );
 }
 
@@ -21,14 +28,12 @@ export async function ingestInnovateMRQuestions({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required",
+      "vendorId, apiConfigId, countryCode, language are required"
     );
   }
 
   // 1️⃣ Fetch API config
-  const apiConfig = await prisma.vendorApiConfig.findUnique({
-    where: { id: apiConfigId },
-  });
+  const apiConfig = await VendorApiConfig.findByPk(apiConfigId);
   if (!apiConfig || !apiConfig.is_active) {
     throw new Error("Invalid or inactive VendorApiConfig");
   }
@@ -41,11 +46,11 @@ export async function ingestInnovateMRQuestions({
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    },
+    }
   );
   console.log(
     ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
-    response.data,
+    response.data
   );
 
   const questions = response.data?.Questions;
@@ -58,9 +63,10 @@ export async function ingestInnovateMRQuestions({
   for (let i = 0; i < questions.length; i += BATCH_SIZE) {
     const batch = questions.slice(i, i + BATCH_SIZE);
 
-    await prisma.$transaction(async (tx) => {
+    const transaction = await sequelize.transaction();
+    try {
       for (const q of batch) {
-        // ❌ Skip question if categories are invalid
+        // Skip question if categories are invalid
         if (hasInvalidCategory(q.Category)) {
           console.warn(`[SKIPPED QUESTION] Invalid category data`, {
             questionKey: q.QuestionKey,
@@ -69,145 +75,85 @@ export async function ingestInnovateMRQuestions({
           continue;
         }
 
-        const question = await tx.vendorQuestionLibrary.upsert({
+        let question = await VendorQuestionLibrary.findOne({
           where: {
-            vendorId_question_key_country_code_language: {
-              vendorId,
-              question_key: q.QuestionKey,
-              country_code: countryCode,
-              language,
-            },
-          },
-          update: {
-            question_text: q.QuestionText,
-            question_type: q.QuestionType,
-            vendor_question_id: String(q.Id),
-            metadata: { standardTarget: q.StandardTarget },
-            api_config_id: apiConfigId,
-            is_active: true,
-          },
-          create: {
             vendorId,
-            api_config_id: apiConfigId,
+            question_key: q.QuestionKey,
             country_code: countryCode,
             language,
-            question_key: q.QuestionKey,
-            question_text: q.QuestionText,
-            question_type: q.QuestionType,
-            vendor_question_id: String(q.Id),
-            metadata: { standardTarget: q.StandardTarget },
           },
+          transaction,
         });
 
-        await tx.vendorQuestionCategory.deleteMany({
+        if (question) {
+          await question.update(
+            {
+              question_text: q.QuestionText,
+              question_type: q.QuestionType,
+              vendor_question_id: String(q.Id),
+              metadata: { standardTarget: q.StandardTarget },
+              api_config_id: apiConfigId,
+              is_active: true,
+            },
+            { transaction }
+          );
+        } else {
+          question = await VendorQuestionLibrary.create(
+            {
+              vendorId,
+              api_config_id: apiConfigId,
+              country_code: countryCode,
+              language,
+              question_key: q.QuestionKey,
+              question_text: q.QuestionText,
+              question_type: q.QuestionType,
+              vendor_question_id: String(q.Id),
+              metadata: { standardTarget: q.StandardTarget },
+              is_active: true,
+            },
+            { transaction }
+          );
+        }
+
+        await VendorQuestionCategory.destroy({
           where: { questionId: question.id },
+          transaction,
         });
 
-        await tx.vendorQuestionOption.deleteMany({
+        await VendorQuestionOption.destroy({
           where: { questionId: question.id },
+          transaction,
         });
 
-        // ✅ Categories (safe now)
-        await tx.vendorQuestionCategory.createMany({
-          data: q.Category.map((c, index) => ({
+        await VendorQuestionCategory.bulkCreate(
+          q.Category.map((c, index) => ({
             questionId: question.id,
             vendor_category_id: String(c.Id),
             category_name: c.Name.trim(),
             is_primary: Boolean(c.Primary),
             order_index: index,
           })),
-        });
+          { transaction }
+        );
 
-        // ✅ Options (optional but still validate)
         if (Array.isArray(q.Options) && q.Options.length > 0) {
-          await tx.vendorQuestionOption.createMany({
-            data: q.Options.filter((o) => o && o.OptionText).map(
-              (o, index) => ({
-                questionId: question.id,
-                vendor_option_id: String(o.Id),
-                option_text: o.OptionText.trim(),
-                order_index: index,
-              }),
-            ),
-          });
+          await VendorQuestionOption.bulkCreate(
+            q.Options.filter((o) => o && o.OptionText).map((o, index) => ({
+              questionId: question.id,
+              vendor_option_id: String(o.Id),
+              option_text: o.OptionText.trim(),
+              order_index: index,
+            })),
+            { transaction }
+          );
         }
       }
-    });
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
   }
-
-  //   // 3️⃣ Persist in a transaction
-  //   await prisma.$transaction(async (tx) => {
-  //     for (const q of questions) {
-  //       // 3.1 Upsert Question
-  //       const question = await tx.vendorQuestionLibrary.upsert({
-  //         where: {
-  //           vendorId_question_key_country_code_language: {
-  //             vendorId,
-  //             question_key: q.QuestionKey,
-  //             country_code: countryCode,
-  //             language: language,
-  //           },
-  //         },
-  //         update: {
-  //           question_text: q.QuestionText,
-  //           question_type: q.QuestionType,
-  //           vendor_question_id: String(q.Id),
-  //           metadata: {
-  //             standardTarget: q.StandardTarget,
-  //           },
-  //           api_config_id: apiConfigId,
-  //           is_active: true,
-  //         },
-  //         create: {
-  //           vendorId,
-  //           api_config_id: apiConfigId,
-  //           country_code: countryCode,
-  //           language,
-  //           question_key: q.QuestionKey,
-  //           question_text: q.QuestionText,
-  //           question_type: q.QuestionType,
-  //           vendor_question_id: String(q.Id),
-  //           metadata: {
-  //             standardTarget: q.StandardTarget,
-  //           },
-  //         },
-  //       });
-
-  //       // 3.2 Reset categories & options (authoritative source)
-  //       await tx.vendorQuestionCategory.deleteMany({
-  //         where: { questionId: question.id },
-  //       });
-
-  //       await tx.vendorQuestionOption.deleteMany({
-  //         where: { questionId: question.id },
-  //       });
-
-  //       // 3.3 Insert Categories
-  //       if (Array.isArray(q.Category)) {
-  //         await tx.vendorQuestionCategory.createMany({
-  //           data: q.Category.map((c, index) => ({
-  //             questionId: question.id,
-  //             vendor_category_id: String(c.Id),
-  //             category_name: c.Name,
-  //             is_primary: Boolean(c.Primary),
-  //             order_index: index,
-  //           })),
-  //         });
-  //       }
-
-  //       // 3.4 Insert Options
-  //       if (Array.isArray(q.Options) && q.Options.length > 0) {
-  //         await tx.vendorQuestionOption.createMany({
-  //           data: q.Options.map((o, index) => ({
-  //             questionId: question.id,
-  //             vendor_option_id: String(o.Id),
-  //             option_text: o.OptionText,
-  //             order_index: index,
-  //           })),
-  //         });
-  //       }
-  //     }
-  //   });
 
   return {
     success: true,
@@ -224,14 +170,12 @@ export async function ingestInnovateMRQuestions_v2({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required",
+      "vendorId, apiConfigId, countryCode, language are required"
     );
   }
 
   // 1️⃣ Fetch API config
-  const apiConfig = await prisma.vendorApiConfig.findUnique({
-    where: { id: apiConfigId },
-  });
+  const apiConfig = await VendorApiConfig.findByPk(apiConfigId);
   if (!apiConfig || !apiConfig.is_active) {
     throw new Error("Invalid or inactive VendorApiConfig");
   }
@@ -244,11 +188,11 @@ export async function ingestInnovateMRQuestions_v2({
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    },
+    }
   );
   console.log(
     ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
-    response.data,
+    response.data
   );
 
   const questions = response.data?.Questions;
@@ -261,9 +205,9 @@ export async function ingestInnovateMRQuestions_v2({
   for (let i = 0; i < questions.length; i += BATCH_SIZE) {
     const batch = questions.slice(i, i + BATCH_SIZE);
 
-    await prisma.$transaction(async (tx) => {
+    const transaction = await sequelize.transaction();
+    try {
       for (const q of batch) {
-        // Skip question if categories are invalid
         if (hasInvalidCategory(q.Category)) {
           console.warn(`[SKIPPED QUESTION] Invalid category data`, {
             questionKey: q.QuestionKey,
@@ -272,70 +216,67 @@ export async function ingestInnovateMRQuestions_v2({
           continue;
         }
 
-        const question = await tx.screeningQuestionDefinition.upsert({
+        const primaryCategory = q.Category.find((c) => c.Primary);
+
+        let question = await ScreeningQuestionDefinition.findOne({
           where: {
-            vendor_question_unique: {
-              vendorId,
-              question_key: q.QuestionKey,
-              country_code: countryCode,
-              language,
-            },
-          },
-          update: {
-            question_text: q.QuestionText,
-            question_type: q.QuestionType,
-            vendor_question_id: String(q.Id),
-            data_type: "STRING",
-            source: "VENDOR",
-            primary_vendor_category_id: String(
-              q.Category.find((c) => c.Primary)?.Id,
-            ),
-            primary_vendor_category_name: q.Category.find(
-              (c) => c.Primary,
-            )?.Name.toUpperCase(),
-            categories_meta: { original_category: q.Category },
-            is_active: true,
-          },
-          create: {
+            vendorId,
+            question_key: q.QuestionKey,
             country_code: countryCode,
             language,
-            question_key: q.QuestionKey,
-            question_text: q.QuestionText,
-            question_type: q.QuestionType,
-            data_type: "STRING",
-            source: "VENDOR",
-            vendorId,
-            vendor_question_id: String(q.Id),
-            primary_vendor_category_id: String(
-              q.Category.find((c) => c.Primary)?.Id,
-            ),
-            primary_vendor_category_name: q.Category.find(
-              (c) => c.Primary,
-            )?.Name.toUpperCase(),
-            categories_meta: { original_category: q.Category },
-            is_active: true,
           },
+          transaction,
         });
 
-        await tx.screenQuestionOption.deleteMany({
+        const updateData = {
+          question_text: q.QuestionText,
+          question_type: q.QuestionType,
+          vendor_question_id: String(q.Id),
+          data_type: "STRING",
+          source: "VENDOR",
+          primary_vendor_category_id: primaryCategory ? String(primaryCategory.Id) : null,
+          primary_vendor_category_name: primaryCategory?.Name ? primaryCategory.Name.toUpperCase() : null,
+          categories_meta: { original_category: q.Category },
+          is_active: true,
+        };
+
+        if (question) {
+          await question.update(updateData, { transaction });
+        } else {
+          question = await ScreeningQuestionDefinition.create(
+            {
+              country_code: countryCode,
+              language,
+              question_key: q.QuestionKey,
+              vendorId,
+              ...updateData,
+            },
+            { transaction }
+          );
+        }
+
+        await ScreenQuestionOption.destroy({
           where: { screeningQuestionId: question.id },
+          transaction,
         });
 
-        // Options (optional but still validate)
         if (Array.isArray(q.Options) && q.Options.length > 0) {
-          await tx.screenQuestionOption.createMany({
-            data: q.Options.filter((o) => o && o.OptionText).map(
-              (o, index) => ({
-                screeningQuestionId: question.id,
-                option_text: o.OptionText.trim(),
-                vendor_option_id: String(o.Id),
-                order_index: index,
-              }),
-            ),
-          });
+          await ScreenQuestionOption.bulkCreate(
+            q.Options.filter((o) => o && o.OptionText).map((o, index) => ({
+              screeningQuestionId: question.id,
+              option_text: o.OptionText.trim(),
+              vendor_option_id: String(o.Id),
+              order_index: index,
+            })),
+            { transaction }
+          );
         }
       }
-    });
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
   }
 
   return {
@@ -353,32 +294,24 @@ export async function ingestInnovateMRQuestions_v3({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required",
+      "vendorId, apiConfigId, countryCode, language are required"
     );
   }
 
-  // 1️⃣ Fetch API config
-  const apiConfig = await prisma.vendorApiConfig.findUnique({
-    where: { id: apiConfigId },
-  });
+  const apiConfig = await VendorApiConfig.findByPk(apiConfigId);
   if (!apiConfig || !apiConfig.is_active) {
     throw new Error("Invalid or inactive VendorApiConfig");
   }
   console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
 
-  // 2️⃣ Call InnovateMR API
   const response = await axios.get(
     `${apiConfig.base_url}/pega/questions/${countryCode}/${language}`,
     {
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    },
+    }
   );
-  // console.log(
-  //   ">>>>> the value of the RESPONSE from INNOVATE MR is : ",
-  //   response.data,
-  // );
 
   const questions = response.data?.Questions;
   if (!Array.isArray(questions)) {
@@ -390,9 +323,9 @@ export async function ingestInnovateMRQuestions_v3({
   for (let i = 0; i < questions.length; i += BATCH_SIZE) {
     const batch = questions.slice(i, i + BATCH_SIZE);
 
-    await prisma.$transaction(async (tx) => {
+    const transaction = await sequelize.transaction();
+    try {
       for (const q of batch) {
-        // Skip question if categories are invalid
         if (hasInvalidCategory(q.Category)) {
           console.warn(`[SKIPPED QUESTION] Invalid category data`, {
             questionKey: q.QuestionKey,
@@ -403,45 +336,36 @@ export async function ingestInnovateMRQuestions_v3({
 
         const primaryCategory = q.Category.find((c) => c.Primary);
 
-        // explicit find for screening question
-        const existingQuestion = await tx.screeningQuestionDefinition.findFirst(
-          {
-            where: {
-              vendorId: vendorId,
-              question_key: q.QuestionKey,
-              country_code: countryCode,
-              language: language,
-            },
+        const existingQuestion = await ScreeningQuestionDefinition.findOne({
+          where: {
+            vendorId: vendorId,
+            question_key: q.QuestionKey,
+            country_code: countryCode,
+            language: language,
           },
-        );
-        console.log(
-          ">>>>> the value of EXISTING QUestions is : ",
-          existingQuestion,
-        );
+          transaction,
+        });
 
         let question;
 
         if (existingQuestion) {
-          // update screening question
-          question = await tx.screeningQuestionDefinition.update({
-            where: { id: existingQuestion.id },
-            data: {
+          question = await existingQuestion.update(
+            {
               question_text: q.QuestionText,
               question_type: q.QuestionType,
               vendor_question_id: String(q.Id),
               data_type: "STRING",
               source: "VENDOR",
-              primary_vendor_category_id: String(primaryCategory?.Id),
-              primary_vendor_category_name:
-                primaryCategory?.Name?.toUpperCase(),
+              primary_vendor_category_id: primaryCategory ? String(primaryCategory.Id) : null,
+              primary_vendor_category_name: primaryCategory?.Name ? primaryCategory.Name.toUpperCase() : null,
               categories_meta: { original_category: q.Category },
               is_active: true,
             },
-          });
+            { transaction }
+          );
         } else {
-          // create Screening Question
-          question = await tx.screeningQuestionDefinition.create({
-            data: {
+          question = await ScreeningQuestionDefinition.create(
+            {
               country_code: countryCode,
               language,
               question_key: q.QuestionKey,
@@ -451,34 +375,37 @@ export async function ingestInnovateMRQuestions_v3({
               source: "VENDOR",
               vendorId,
               vendor_question_id: String(q.Id),
-              primary_vendor_category_id: String(primaryCategory?.Id),
-              primary_vendor_category_name:
-                primaryCategory?.Name?.toUpperCase(),
+              primary_vendor_category_id: primaryCategory ? String(primaryCategory.Id) : null,
+              primary_vendor_category_name: primaryCategory?.Name ? primaryCategory.Name.toUpperCase() : null,
               categories_meta: { original_category: q.Category },
               is_active: true,
             },
-          });
+            { transaction }
+          );
         }
 
-        await tx.screenQuestionOption.deleteMany({
+        await ScreenQuestionOption.destroy({
           where: { screeningQuestionId: question.id },
+          transaction,
         });
 
-        // Options (optional but still validate)
         if (Array.isArray(q.Options) && q.Options.length > 0) {
-          await tx.screenQuestionOption.createMany({
-            data: q.Options.filter((o) => o && o.OptionText).map(
-              (o, index) => ({
-                screeningQuestionId: question.id,
-                option_text: o.OptionText.trim(),
-                vendor_option_id: String(o.Id),
-                order_index: index,
-              }),
-            ),
-          });
+          await ScreenQuestionOption.bulkCreate(
+            q.Options.filter((o) => o && o.OptionText).map((o, index) => ({
+              screeningQuestionId: question.id,
+              option_text: o.OptionText.trim(),
+              vendor_option_id: String(o.Id),
+              order_index: index,
+            })),
+            { transaction }
+          );
         }
       }
-    });
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
   }
 
   return {
@@ -491,64 +418,52 @@ export async function ingestInnovateMRQuestions_v3({
 export async function buildVendorTargetPayload(input) {
   if (!input || typeof input !== "object") return [];
 
-  return (
-    Object.values(input)
-      .map((item) => {
-        if (!item || !item.vendorQuestionId) return null;
+  return Object.values(input)
+    .map((item) => {
+      if (!item || !item.vendorQuestionId) return null;
 
-        const vendorQuestionId = parseInt(item.vendorQuestionId);
+      const vendorQuestionId = parseInt(item.vendorQuestionId);
 
-        // =========================
-        // OPEN ENDED QUESTIONS
-        // =========================
-        if (item.openEnded) {
-          const { mode } = item.openEnded;
+      if (item.openEnded) {
+        const { mode } = item.openEnded;
 
-          // RANGE (e.g. AGE)
-          if (mode === "RANGE" && Array.isArray(item.openEnded.ranges)) {
-            const options = item.openEnded.ranges
-              .filter(
-                (r) => typeof r.min === "number" && typeof r.max === "number",
-              )
-              .map((r) => `${r.min}-${r.max}`);
+        if (mode === "RANGE" && Array.isArray(item.openEnded.ranges)) {
+          const options = item.openEnded.ranges
+            .filter(
+              (r) => typeof r.min === "number" && typeof r.max === "number"
+            )
+            .map((r) => `${r.min}-${r.max}`);
 
-            return {
-              questionId: vendorQuestionId,
-              Options: options,
-            };
-          }
-
-          // TEXT VALUES
-          if (mode === "NUMERIC" && Array.isArray(item.openEnded.textValues)) {
-            const options = item.openEnded.textValues
-              .map((t) => t && t.value)
-              .filter(Boolean);
-
-            return {
-              questionId: vendorQuestionId,
-              Options: options,
-            };
-          }
-
-          // Unknown / invalid openEnded config
-          return null;
-        }
-
-        // =========================
-        // CLOSED / MULTI SELECT
-        // =========================
-        if (Array.isArray(item.selectedVendorOptionIds)) {
           return {
             questionId: vendorQuestionId,
-            Options: item.selectedVendorOptionIds.map(Number),
+            Options: options,
+          };
+        }
+
+        if (mode === "NUMERIC" && Array.isArray(item.openEnded.textValues)) {
+          const options = item.openEnded.textValues
+            .map((t) => t && t.value)
+            .filter(Boolean);
+
+          return {
+            questionId: vendorQuestionId,
+            Options: options,
           };
         }
 
         return null;
-      })
-      // Remove invalid questions
-      .filter(Boolean)
-  );
+      }
+
+      if (Array.isArray(item.selectedVendorOptionIds)) {
+        return {
+          questionId: vendorQuestionId,
+          Options: item.selectedVendorOptionIds.map(Number),
+        };
+      }
+
+      return null;
+    })
+    .filter(Boolean);
 }
 
 export function buildQuotaConditions(targets) {
@@ -569,36 +484,26 @@ export function buildQuotaConditions(targets) {
   }, {});
 }
 
-/**
- * Validates InnovateMR API response
- * @param {Object} response - axios/fetch response
- * @param {string} context - operation name (for logs)
- * @returns {Object} response.data
- * @throws Error
- */
 export function validateInnovateMRResponse(
   response,
-  context = "InnovateMR API",
+  context = "InnovateMR API"
 ) {
-  // 1. HTTP-level validation
   if (!response || response.status !== 200) {
     throw new Error(
-      `[${context}] HTTP error. Expected 200, got ${response?.status}`,
+      `[${context}] HTTP error. Expected 200, got ${response?.status}`
     );
   }
 
   const data = response.data;
   console.log(">>>>>>>>>>value of RESPONSE in VALIDATE function is : ", data);
 
-  // 2. Payload existence
   if (!data || typeof data !== "object") {
     throw new Error(`[${context}] Invalid response body from InnovateMR`);
   }
 
-  // 3. Business-level status
   if (data.apiStatus !== "success" && data.success != true) {
     throw new Error(
-      `[${context}] InnovateMR failure: ${data.msg || "Unknown error"}`,
+      `[${context}] InnovateMR failure: ${data.msg || "Unknown error"}`
     );
   }
 
@@ -613,31 +518,27 @@ export async function ingestSurvey96Questions({
 }) {
   if (!vendorId || !apiConfigId || !countryCode || !language) {
     throw new Error(
-      "vendorId, apiConfigId, countryCode, language are required",
+      "vendorId, apiConfigId, countryCode, language are required"
     );
   }
 
-  // 1️⃣ Fetch API config
-  const apiConfig = await prisma.vendorApiConfig.findUnique({
-    where: { id: apiConfigId },
-  });
+  const apiConfig = await VendorApiConfig.findByPk(apiConfigId);
   if (!apiConfig || !apiConfig.is_active) {
     throw new Error("Invalid or inactive VendorApiConfig");
   }
   console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
 
-  // 2️⃣ Call InnovateMR API
   const response = await axios.get(
     `${apiConfig.base_url}/questions/${countryCode}/${language}`,
     {
       headers: {
         "x-access-token": `${apiConfig.credentials.token}`,
       },
-    },
+    }
   );
   console.log(
     ">>>>> the value of the RESPONSE from SURVEY 96 is : ",
-    response.data,
+    response.data
   );
 
   const questions = response.data?.data;
@@ -651,92 +552,83 @@ export async function ingestSurvey96Questions({
   for (let i = 0; i < questions.length; i += BATCH_SIZE) {
     const batch = questions.slice(i, i + BATCH_SIZE);
 
-    await prisma.$transaction(async (tx) => {
+    const transaction = await sequelize.transaction();
+    try {
       for (const q of batch) {
-        const question = await tx.screeningQuestionDefinition.upsert({
+        let question = await ScreeningQuestionDefinition.findOne({
           where: {
-            vendor_question_unique: {
-              vendorId,
-              question_key: q.question_key,
-              country_code: countryCode,
-              language,
-            },
-          },
-          update: {
-            question_text: q.question_text,
-            question_type: q.question_type,
-            vendor_question_id: String(q.id),
-            data_type: q.question_key == "AGE" ? "NUMBER" : "STRING",
-            source: "VENDOR",
-            primary_vendor_category_id: q.category?.id,
-            primary_vendor_category_name: q.category?.name.toUpperCase(),
-            categories_meta: { original_category: q.category },
-            is_active: true,
-          },
-          create: {
+            vendorId,
+            question_key: q.question_key,
             country_code: countryCode,
             language,
-            question_key: q.question_key,
-            question_text: q.question_text,
-            question_type: q.question_type,
-            data_type: q.question_key == "AGE" ? "NUMBER" : "STRING",
-            source: "VENDOR",
-            vendorId,
-            vendor_question_id: String(q.id),
-            primary_vendor_category_id: q.category?.id,
-            primary_vendor_category_name: q.category?.name.toUpperCase(),
-            categories_meta: { original_category: q.category },
-            is_active: true,
           },
+          transaction,
         });
 
-        // await tx.screenQuestionOption.deleteMany({
-        //   where: { screeningQuestionId: question.id },
-        // });
+        const updateData = {
+          question_text: q.question_text,
+          question_type: q.question_type,
+          vendor_question_id: String(q.id),
+          data_type: q.question_key == "AGE" ? "NUMBER" : "STRING",
+          source: "VENDOR",
+          primary_vendor_category_id: q.category?.id ? String(q.category.id) : null,
+          primary_vendor_category_name: q.category?.name ? q.category.name.toUpperCase() : null,
+          categories_meta: { original_category: q.category },
+          is_active: true,
+        };
 
-        // // Options (optional but still validate)
-        // if (
-        //   Array.isArray(q.question_options) &&
-        //   q.question_options.length > 0
-        // ) {
-        //   await tx.screenQuestionOption.createMany({
-        //     data: q.question_options
-        //       .filter((o) => o && o.option_text)
-        //       .map((o, index) => ({
-        //         screeningQuestionId: question.id,
-        //         option_text: o.option_text.trim(),
-        //         vendor_option_id: String(o.id),
-        //         order_index: index,
-        //       })),
-        //   });
-        // }
+        if (question) {
+          await question.update(updateData, { transaction });
+        } else {
+          question = await ScreeningQuestionDefinition.create(
+            {
+              country_code: countryCode,
+              language,
+              question_key: q.question_key,
+              vendorId,
+              ...updateData,
+            },
+            { transaction }
+          );
+        }
 
-        for (const [index, o] of q.question_options.entries()) {
-          if (!o || !o.option_text) continue;
-          const vendorOptionId = o.id ? String(o.id) : null;
+        if (Array.isArray(q.question_options)) {
+          for (const [index, o] of q.question_options.entries()) {
+            if (!o || !o.option_text) continue;
+            const vendorOptionId = o.id ? String(o.id) : null;
 
-          await tx.screenQuestionOption.upsert({
-            where: {
-              // you need a unique constraint for this
-              screeningQuestionId_vendor_option_id: {
+            let existingOpt = await ScreenQuestionOption.findOne({
+              where: {
                 screeningQuestionId: question.id,
                 vendor_option_id: vendorOptionId,
               },
-            },
-            update: {
-              option_text: o.option_text.trim(),
-              // order_index: index,
-            },
-            create: {
-              screeningQuestionId: question.id,
-              option_text: o.option_text.trim(),
-              vendor_option_id: vendorOptionId,
-              order_index: index,
-            },
-          });
+              transaction,
+            });
+
+            if (existingOpt) {
+              await existingOpt.update(
+                { option_text: o.option_text.trim() },
+                { transaction }
+              );
+            } else {
+              await ScreenQuestionOption.create(
+                {
+                  screeningQuestionId: question.id,
+                  option_text: o.option_text.trim(),
+                  vendor_option_id: vendorOptionId,
+                  order_index: index,
+                },
+                { transaction }
+              );
+            }
+          }
         }
       }
-    });
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
   }
 
   return {

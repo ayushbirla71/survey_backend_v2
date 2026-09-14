@@ -1,5 +1,11 @@
 import axios from "axios";
-import prisma from "../../config/db.js";
+import { Op } from "sequelize";
+import {
+  ScreeningQuestionDefinition,
+  Vendor,
+  VendorApiConfig,
+  SurveyVendorConfig,
+} from "../../models/index.js";
 import {
   buildQuotaConditions,
   validateInnovateMRResponse,
@@ -9,7 +15,7 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
   try {
     console.log(
       ">>>> the value of the SCREENING in prepareInnovaeMRPayload is : ",
-      screening,
+      screening
     );
     if (!screening || !Array.isArray(screening)) return [];
 
@@ -19,8 +25,8 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
       .map((q) => q.questionId);
 
     // bulk fetch definitions instead of N queries
-    const defs = await prisma.screeningQuestionDefinition.findMany({
-      where: { id: { in: noTargetIds } },
+    const defs = await ScreeningQuestionDefinition.findAll({
+      where: { id: { [Op.in]: noTargetIds } },
     });
 
     const defsById = Object.fromEntries(defs.map((d) => [d.id, d]));
@@ -53,13 +59,13 @@ const prepareInnovaeMRTargetPayload = async (screening) => {
             return {
               questionId: vendorQuestionId,
               Options: q.buckets.flatMap((b) =>
-                Array.isArray(b.value) ? b.value : [b.value],
+                Array.isArray(b.value) ? b.value : [b.value]
               ),
             };
           default:
             return null;
         }
-      }),
+      })
     );
 
     return payload.filter(Boolean);
@@ -81,35 +87,39 @@ export const addSurveyToInnovaeMR = async ({
   try {
     console.log(
       ">>>> the value of the SURVEY in addSurveyToInnovaeMR is : ",
-      survey,
+      survey
     );
     console.log(
       ">>>> the value of the VENDOR ID in addSurveyToInnovaeMR is : ",
-      vendorId,
+      vendorId
     );
     console.log(
       ">>>> the value of the TOTAL TARGET in addSurveyToInnovaeMR is : ",
-      totalTarget,
+      totalTarget
     );
     console.log(
       ">>>> the value of the SCREENING in addSurveyToInnovaeMR is : ",
-      screening,
+      screening
     );
 
-    const vendorDetails = await prisma.vendor.findUnique({
-      where: { id: vendorId },
-      include: {
-        api_configs: { where: { is_default: true, is_active: true } },
-      },
+    const vendorDetails = await Vendor.findByPk(vendorId, {
+      include: [
+        {
+          model: VendorApiConfig,
+          as: "api_configs",
+          where: { is_default: true, is_active: true },
+          required: false,
+        },
+      ],
     });
     console.log(
       ">>>> the value of the VENDOR DETAILS in addSurveyToInnovaeMR is : ",
-      vendorDetails,
+      vendorDetails
     );
     if (!vendorDetails) {
       throw new Error("Vendor not found");
     }
-    if (vendorDetails.api_configs.length === 0) {
+    if (!vendorDetails.api_configs || vendorDetails.api_configs.length === 0) {
       throw new Error("No active API config found");
     }
 
@@ -118,14 +128,12 @@ export const addSurveyToInnovaeMR = async ({
     const { id: apiConfigId, base_url, credentials } = apiConfig;
 
     // Check if JOB already created on VENDOR side
-    const isSurveyVendorConfigExist = await prisma.surveyVendorConfig.findFirst(
-      {
-        where: { surveyId: survey.id, vendorId: vendorDetails.id },
-      },
-    );
+    const isSurveyVendorConfigExist = await SurveyVendorConfig.findOne({
+      where: { surveyId: survey.id, vendorId: vendorDetails.id },
+    });
     console.log(
       ">>>> the value of the isSurveyVendorConfigExist in addSurveyToInnovaeMR is : ",
-      isSurveyVendorConfigExist,
+      isSurveyVendorConfigExist
     );
 
     let job_id = isSurveyVendorConfigExist
@@ -133,7 +141,7 @@ export const addSurveyToInnovaeMR = async ({
       : null;
     console.log(
       ">>>> the value of the JOB ID in addSurveyToInnovaeMR is : ",
-      job_id,
+      job_id
     );
 
     let surveyVendorConfigId = isSurveyVendorConfigExist
@@ -141,7 +149,7 @@ export const addSurveyToInnovaeMR = async ({
       : null;
     console.log(
       ">>>> the value of the surveyVendorConfigId in addSurveyToInnovaeMR is : ",
-      surveyVendorConfigId,
+      surveyVendorConfigId
     );
 
     if (!job_id) {
@@ -156,36 +164,34 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the createJobResponse from INNOVATE MR is : ",
-        createJobResponse.data,
+        createJobResponse.data
       );
       const validatedCreateJobResponse = validateInnovateMRResponse(
         createJobResponse,
-        "Create Job",
+        "Create Job"
       );
       console.log(
         ">>>>> the value of the validatedCreateJobResponse from INNOVATE MR is : ",
-        validatedCreateJobResponse,
+        validatedCreateJobResponse
       );
 
       job_id = createJobResponse.data?.job?.Id;
       console.log(">>>>> the value of the JOB ID is : ", job_id);
 
-      const createSurveyVendorConfig = await prisma.surveyVendorConfig.create({
-        data: {
-          surveyId: survey.id,
-          vendorId: vendorDetails.id,
-          api_config_id: apiConfigId,
-          vendor_survey_id: JSON.stringify(job_id),
-          status: "CREATED",
-        },
+      const createSurveyVendorConfig = await SurveyVendorConfig.create({
+        surveyId: survey.id,
+        vendorId: vendorDetails.id,
+        api_config_id: apiConfigId,
+        vendor_survey_id: JSON.stringify(job_id),
+        status: "CREATED",
       });
       console.log(
         ">>>>> the value of the createSurveyVendorConfig is : ",
-        createSurveyVendorConfig,
+        createSurveyVendorConfig
       );
 
       surveyVendorConfigId = createSurveyVendorConfig.id;
@@ -197,7 +203,7 @@ export const addSurveyToInnovaeMR = async ({
 
     console.log(
       ">>>>>> the value of the GROUP iD in addSurveyToInnovaeMR is : ",
-      group_id,
+      group_id
     );
 
     if (!group_id) {
@@ -213,41 +219,41 @@ export const addSurveyToInnovaeMR = async ({
           LengthOfInterview: lengthOfInterview || 2,
           LiveSurveyUrl:
             process.env.BACKEND_URL +
-            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`,
           TestSurveyUrl:
             process.env.BACKEND_URL +
-            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the test survey url
+            `/webhook/innovate/${survey.id}?tk=[%%token%%]&pid=[%%pid%%]`,
           Target: { Country: "India", Languages: "ENGLISH" },
         },
         {
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
-        createGroupResponse.data,
+        createGroupResponse.data
       );
       const validatedCreateGroupResponse = validateInnovateMRResponse(
         createGroupResponse,
-        "Create Group",
+        "Create Group"
       );
       console.log(
         ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
-        validatedCreateGroupResponse,
+        validatedCreateGroupResponse
       );
 
       group_id = createGroupResponse.data?.group?.Id;
       console.log(">>>>> the value of the GROUP ID is : ", group_id);
 
-      const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { vendor_group_id: JSON.stringify(group_id) },
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfig = await svc.update({
+        vendor_group_id: JSON.stringify(group_id),
       });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfig is : ",
-        updateSurveyVendorConfig,
+        updateSurveyVendorConfig
       );
     } else {
       // Group already created have to update it
@@ -257,11 +263,11 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the GET GROUP DETAILS is : ",
-        getGroupDetails.data,
+        getGroupDetails.data
       );
       const group = getGroupDetails.data.group;
       console.log(">>>>>> the value of the GROUP is : ", group);
@@ -274,8 +280,8 @@ export const addSurveyToInnovaeMR = async ({
         LengthOfInterview: lengthOfInterview || group.LengthOfInterview,
         LiveSurveyUrl: group.LiveSurveyUrl,
         TestSurveyUrl: group.LiveSurveyUrl,
-        Color: 0, // White
-        Priority: 0, // Normal
+        Color: 0,
+        Priority: 0,
         DeviceType: group.DeviceType,
         Target: { GeoIPCheck: 0, Country: "India", Languages: "ENGLISH" },
         Note: "Some Updates in the Group.",
@@ -283,7 +289,7 @@ export const addSurveyToInnovaeMR = async ({
       };
       console.log(
         ">>>> the value of the UPDATE GROUP PAYLOAD is : ",
-        updateGroupPayload,
+        updateGroupPayload
       );
 
       const updateGroup = await axios.put(
@@ -293,26 +299,26 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the UPDATE GROUP is : ",
-        updateGroup.data,
+        updateGroup.data
       );
       const validatedUpdateGroupResponse = validateInnovateMRResponse(
         updateGroup,
-        "Update Group",
+        "Update Group"
       );
       console.log(
         ">>>>> the value of the validatedUpdateGroupResponse from INNOVATE MR is : ",
-        validatedUpdateGroupResponse,
+        validatedUpdateGroupResponse
       );
     }
 
     const vendorTargetPayload = await prepareInnovaeMRTargetPayload(screening);
     console.log(
       ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
-      vendorTargetPayload,
+      vendorTargetPayload
     );
 
     const is_target_added = isSurveyVendorConfigExist
@@ -320,7 +326,7 @@ export const addSurveyToInnovaeMR = async ({
       : false;
     console.log(
       ">>>>> the value of the IS SURVEY ADDED is : ",
-      is_target_added,
+      is_target_added
     );
 
     if (deleteVendorTargets != null && deleteVendorTargets.length != 0) {
@@ -330,7 +336,7 @@ export const addSurveyToInnovaeMR = async ({
           const question_key = toDeleteTarget.questionKey;
           console.log(
             ">>>> the value of the QUESTION KEY in REMOVE TARGET is : ",
-            question_key,
+            question_key
           );
           const removeVendorTargetResponse = await axios.delete(
             `${base_url}/pega/group/${group_id}/${question_key}`,
@@ -338,24 +344,24 @@ export const addSurveyToInnovaeMR = async ({
               headers: {
                 "x-access-token": `${credentials.token}`,
               },
-            },
+            }
           );
           console.log(
             ">>>> the value of the REMOVE VENDOR target response is : ",
-            removeVendorTargetResponse.data,
+            removeVendorTargetResponse.data
           );
           const validateRemoveTargetResponse = validateInnovateMRResponse(
             removeVendorTargetResponse,
-            "Remove Target",
+            "Remove Target"
           );
           console.log(
             ">>>>> the value of the validateRemoveTargetResponse from INNOVATE MR is : ",
-            validateRemoveTargetResponse,
+            validateRemoveTargetResponse
           );
         } catch (error) {
           console.error("Remove from Innovate MR Target Error : ", error);
           throw new Error(
-            "Failed to Remove the Existing Targets on InnovateMR.",
+            "Failed to Remove the Existing Targets on InnovateMR."
           );
         }
       }
@@ -380,15 +386,15 @@ export const addSurveyToInnovaeMR = async ({
         });
         console.log(
           ">>>> the value of the createVendorTargetResponse is : ",
-          createVendorTargetResponse.data,
+          createVendorTargetResponse.data
         );
         const validatedCreateVendorTargetResponse = validateInnovateMRResponse(
           createVendorTargetResponse,
-          "Create Vendor Target",
+          "Create Vendor Target"
         );
         console.log(
           ">>>>> the value of the validatedCreateVendorTargetResponse from INNOVATE MR is : ",
-          validatedCreateVendorTargetResponse,
+          validatedCreateVendorTargetResponse
         );
       } catch (error) {
         console.error("Distribute Over InnovateMR Error:", error);
@@ -397,21 +403,20 @@ export const addSurveyToInnovaeMR = async ({
     }
 
     if (!is_target_added) {
-      const updateSurveyVendorConfigWithTarget =
-        await prisma.surveyVendorConfig.update({
-          where: { id: surveyVendorConfigId },
-          data: { is_target_added: true },
-        });
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfigWithTarget = await svc.update({
+        is_target_added: true,
+      });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
-        updateSurveyVendorConfigWithTarget,
+        updateSurveyVendorConfigWithTarget
       );
     }
 
     const conditions = buildQuotaConditions(vendorTargetPayload);
     console.log(
       ">>>> the value of the CONDITIONS in distributeOverInnovateMR is : ",
-      conditions,
+      conditions
     );
 
     let quota_id = isSurveyVendorConfigExist
@@ -434,32 +439,31 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the addQuotaToGroupResponse is : ",
-        addQuotaToGroupResponse.data,
+        addQuotaToGroupResponse.data
       );
       const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
         addQuotaToGroupResponse,
-        "Add Quota to Group",
+        "Add Quota to Group"
       );
       console.log(
         ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
-        validatedAddQuotaToGroupResponse,
+        validatedAddQuotaToGroupResponse
       );
 
       quota_id = addQuotaToGroupResponse.data?.Quota?.Id;
       console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
 
-      const updateSurveyVendorConfigWithQuota =
-        await prisma.surveyVendorConfig.update({
-          where: { id: surveyVendorConfigId },
-          data: { vendor_quota_id: JSON.stringify(quota_id) },
-        });
+      const svc = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+      const updateSurveyVendorConfigWithQuota = await svc.update({
+        vendor_quota_id: JSON.stringify(quota_id),
+      });
       console.log(
         ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
-        updateSurveyVendorConfigWithQuota,
+        updateSurveyVendorConfigWithQuota
       );
     } else {
       // Quota already exists have to update it
@@ -469,11 +473,11 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the GET GROUP QUOTA is : ",
-        getGroupQuota.data,
+        getGroupQuota.data
       );
 
       const quotas = getGroupQuota.data.Quotas;
@@ -492,7 +496,7 @@ export const addSurveyToInnovaeMR = async ({
       };
       console.log(
         ">>>>>> the value of the UPDATE QUOTA PAYLOAD is : ",
-        updatedQuotaPayload,
+        updatedQuotaPayload
       );
 
       const updateGroupQuota = await axios.put(
@@ -502,20 +506,20 @@ export const addSurveyToInnovaeMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>> the value of the UPDATE GROUP QUOTA is : ",
-        updateGroupQuota.data,
+        updateGroupQuota.data
       );
 
       const validatedUpdateQuotaToGroupResponse = validateInnovateMRResponse(
         updateGroupQuota,
-        "Update Quota to Group",
+        "Update Quota to Group"
       );
       console.log(
         ">>>>> the value of the validatedUpdateQuotaToGroupResponse from INNOVATE MR is : ",
-        validatedUpdateQuotaToGroupResponse,
+        validatedUpdateQuotaToGroupResponse
       );
     }
 

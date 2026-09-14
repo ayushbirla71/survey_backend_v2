@@ -1,4 +1,4 @@
-import prisma from "../config/db.js";
+import { User } from "../models/index.js";
 import bcrypt from "bcryptjs";
 import { generateToken } from "../utils/generateToken.js";
 
@@ -9,21 +9,19 @@ export const register = async (req, res) => {
   try {
     const { name, email, mobile_no, password, role, theme } = req.body;
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await User.findOne({ where: { email } });
     if (existing)
       return res.status(400).json({ message: "User already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        mobile_no,
-        password: hashedPassword,
-        role: role || "USER",
-        theme: theme || "LIGHT",
-      },
+    const user = await User.create({
+      name,
+      email,
+      mobile_no,
+      password: hashedPassword,
+      role: role || "USER",
+      theme: theme || "LIGHT",
     });
 
     const token = generateToken(user);
@@ -50,7 +48,7 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await User.findOne({ where: { email } });
     if (!user)
       return res
         .status(400)
@@ -97,15 +95,13 @@ export const getAllUsers = async (req, res) => {
     console.log("Page:", page, "Limit:", limit);
 
     // Get total users count
-    const total = await prisma.user.count();
+    const total = await User.count();
     console.log(">>>> the value of TOTAL is : ", total);
 
-    const allUsers = await prisma.user.findMany({
-      skip: skip,
-      take: limit,
-      orderBy: {
-        created_at: "desc", // optional but recommended
-      },
+    const allUsers = await User.findAll({
+      offset: skip,
+      limit: limit,
+      order: [["created_at", "DESC"]],
     });
     console.log(">>>>> the value of the ALL USERS is : ", allUsers);
 
@@ -130,27 +126,28 @@ export const createUser = async (req, res) => {
     console.log(">>>> the value of the BODY is : ", body);
     const { name, email, mobile_no, password, role, theme } = body;
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await User.findOne({ where: { email } });
     if (existing)
       return res.status(400).json({ message: "User already exists" });
-    const existingMobile = await prisma.user.findUnique({
-      where: { mobile_no },
-    });
-    if (existingMobile) {
-      return res.status(400).json({ message: "Mobile no already used" });
+
+    if (mobile_no) {
+      const existingMobile = await User.findOne({
+        where: { mobile_no },
+      });
+      if (existingMobile) {
+        return res.status(400).json({ message: "Mobile no already used" });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        mobile_no,
-        password: hashedPassword,
-        role: role || "USER",
-        theme: theme || "LIGHT",
-      },
+    const user = await User.create({
+      name,
+      email,
+      mobile_no,
+      password: hashedPassword,
+      role: role || "USER",
+      theme: theme || "LIGHT",
     });
     console.log(">>>> the value of the USER created is : ", user);
 
@@ -158,7 +155,7 @@ export const createUser = async (req, res) => {
       .status(200)
       .json({ message: "User created successfully.", data: user });
   } catch (error) {
-    cosnole.log(">>>>> the error in the CREATE USER function is : ", error);
+    console.log(">>>>> the error in the CREATE USER function is : ", error);
     return res.status(500).json({ message: "Server error", error });
   }
 };
@@ -174,15 +171,16 @@ export const updateUser = async (req, res) => {
 
     const { name, mobile_no, role, theme } = body;
 
-    const existing = await prisma.user.findUnique({ where: { id: userId } });
+    const existing = await User.findByPk(userId);
     console.log(">>>> the value of the EXISTING is : ", existing);
     if (!existing)
       return res.status(404).json({ message: "User does not exist." });
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { name, mobile_no, role, theme },
-    });
+    await User.update(
+      { name, mobile_no, role, theme },
+      { where: { id: userId } }
+    );
+    const updatedUser = await User.findByPk(userId);
     console.log(">>>>> the value of the UPDATED user is : ", updatedUser);
 
     return res
@@ -202,17 +200,13 @@ export const toggleUserBlocked = async (req, res) => {
     const { is_blocked } = req.body;
     console.log(">>>>> the value of the IS_BLOCKED is : ", is_blocked);
 
-    const existing = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const existing = await User.findByPk(userId);
     if (!existing)
       return res.status(404).json({ message: "User does not exist." });
     console.log(">>>>> the value of the EXISTING is : ", existing);
 
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { is_blocked },
-    });
+    await User.update({ is_blocked }, { where: { id: userId } });
+    const updatedUser = await User.findByPk(userId);
     console.log(">>>>. the value of the UDPATED USER is : ", updatedUser);
 
     return res.status(200).json({
@@ -222,7 +216,7 @@ export const toggleUserBlocked = async (req, res) => {
   } catch (error) {
     console.log(
       ">>>> the error in the toggleUserBlocked function is : ",
-      error,
+      error
     );
     return res.status(500).json({ message: "Server error", error });
   }

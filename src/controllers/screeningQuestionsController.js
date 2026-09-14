@@ -1,6 +1,10 @@
-import prisma from "../config/db.js";
+import sequelize, {
+  ScreeningQuestionDefinition,
+  ScreenQuestionOption,
+  VendorApiConfig,
+  SurveyQuotaOption,
+} from "../models/index.js";
 import { fetchQuestionsFromVendor } from "../services/vendorQuestionService.js";
-import { ingestInnovateMRQuestions_v2 } from "../utils/vendorUtils.js";
 
 export const getScreeningQuestions = async (req, res) => {
   try {
@@ -21,19 +25,19 @@ export const getScreeningQuestions = async (req, res) => {
     }
     console.log(
       ">>>>> the value of the FIND QUESTIONS WHERE is : ",
-      findQuestionsWhere,
+      findQuestionsWhere
     );
 
-    let questions = await prisma.screeningQuestionDefinition.findMany({
+    let questions = await ScreeningQuestionDefinition.findAll({
       where: findQuestionsWhere,
-      include: { options: true },
+      include: [{ model: ScreenQuestionOption, as: "options" }],
     });
     console.log(">>>>> the value of the SCREENING QUESTIONS is : ", questions);
 
     if (questions.length === 0 && source === "VENDOR") {
-      const apiConfig = await prisma.vendorApiConfig.findFirst({
+      const apiConfig = await VendorApiConfig.findOne({
         where: { vendorId, is_default: true },
-        select: { id: true },
+        attributes: ["id"],
       });
       console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
       if (!apiConfig) {
@@ -47,9 +51,9 @@ export const getScreeningQuestions = async (req, res) => {
         language,
       });
 
-      questions = await prisma.screeningQuestionDefinition.findMany({
+      questions = await ScreeningQuestionDefinition.findAll({
         where: findQuestionsWhere,
-        include: { options: true },
+        include: [{ model: ScreenQuestionOption, as: "options" }],
       });
     }
 
@@ -72,9 +76,9 @@ export const updateScreeningQuestionsListFromVendorSide = async (req, res) => {
       language = "ENGLISH",
     } = req.query;
 
-    const apiConfig = await prisma.vendorApiConfig.findFirst({
+    const apiConfig = await VendorApiConfig.findOne({
       where: { vendorId, is_default: true },
-      select: { id: true },
+      attributes: ["id"],
     });
     console.log(">>>>> the value of the API CONFIG is : ", apiConfig);
     if (!apiConfig) {
@@ -88,9 +92,9 @@ export const updateScreeningQuestionsListFromVendorSide = async (req, res) => {
       language,
     });
 
-    const questions = await prisma.screeningQuestionDefinition.findMany({
+    const questions = await ScreeningQuestionDefinition.findAll({
       where: { country_code: countryCode, language, source, vendorId },
-      include: { options: true },
+      include: [{ model: ScreenQuestionOption, as: "options" }],
     });
 
     return res.json({
@@ -103,20 +107,22 @@ export const updateScreeningQuestionsListFromVendorSide = async (req, res) => {
   }
 };
 
-async function resetQuestionOptions(tx, questionId, options) {
-  await tx.screenQuestionOption.deleteMany({
+async function resetQuestionOptions(t, questionId, options) {
+  await ScreenQuestionOption.destroy({
     where: { screeningQuestionId: questionId },
+    transaction: t,
   });
 
   if (!Array.isArray(options) || options.length === 0) return;
 
-  await tx.screenQuestionOption.createMany({
-    data: options.map((option, index) => ({
+  await ScreenQuestionOption.bulkCreate(
+    options.map((option) => ({
       screeningQuestionId: questionId,
       option_text: option.option_text.trim(),
       order_index: option.order_index,
     })),
-  });
+    { transaction: t }
+  );
 }
 
 export const createScreeningQuestion = async (req, res) => {
@@ -146,38 +152,41 @@ export const createScreeningQuestion = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    const questionWithOptions = await prisma.$transaction(async (tx) => {
-      const existingSystem = await tx.screeningQuestionDefinition.findFirst({
+    const questionWithOptions = await sequelize.transaction(async (t) => {
+      const existingSystem = await ScreeningQuestionDefinition.findOne({
         where: {
           vendorId: null,
           question_key,
           country_code,
           language,
         },
+        transaction: t,
       });
 
       let question;
 
       if (existingSystem) {
-        question = await tx.screeningQuestionDefinition.update({
-          where: { id: existingSystem.id },
-          data: {
+        await ScreeningQuestionDefinition.update(
+          {
             question_text,
             question_type,
             data_type,
             source: "SYSTEM",
             is_active: true,
-            // Explicitly enforce NON-vendor state
             vendorId: null,
             vendor_question_id: null,
             primary_vendor_category_id: null,
             primary_vendor_category_name: null,
             categories_meta: null,
           },
+          { where: { id: existingSystem.id }, transaction: t }
+        );
+        question = await ScreeningQuestionDefinition.findByPk(existingSystem.id, {
+          transaction: t,
         });
       } else {
-        question = await tx.screeningQuestionDefinition.create({
-          data: {
+        question = await ScreeningQuestionDefinition.create(
+          {
             country_code,
             language,
             question_key,
@@ -188,56 +197,20 @@ export const createScreeningQuestion = async (req, res) => {
             vendorId: null,
             is_active: true,
           },
-        });
+          { transaction: t }
+        );
       }
 
-      // // 1. UPSERT QUESTION
-      // const question = await tx.screeningQuestionDefinition.upsert({
-      //   where: {
-      //     system_question_unique: {
-      //       source: "SYSTEM",
-      //       question_key,
-      //       country_code,
-      //       language,
-      //     },
-      //   },
-      //   update: {
-      //     question_text,
-      //     question_type,
-      //     data_type,
-      //     source,
-      //     is_active: true,
+      await resetQuestionOptions(t, question.id, options);
 
-      //     // Explicitly enforce NON-vendor state
-      //     vendorId: null,
-      //     vendor_question_id: null,
-      //     primary_vendor_category_id: null,
-      //     primary_vendor_category_name: null,
-      //     categories_meta: null,
-      //   },
-      //   create: {
-      //     country_code,
-      //     language,
-      //     question_key,
-      //     question_text,
-      //     question_type,
-      //     data_type,
-      //     source,
-      //     is_active: true,
-      //   },
-      // });
-
-      await resetQuestionOptions(tx, question.id, options);
-
-      // 2.3 RETURN CONSISTENT VIEW
-      return tx.screeningQuestionDefinition.findUnique({
-        where: { id: question.id },
-        include: { options: true },
+      return await ScreeningQuestionDefinition.findByPk(question.id, {
+        include: [{ model: ScreenQuestionOption, as: "options" }],
+        transaction: t,
       });
     });
     console.log(
       ">>>>> the value of the QUESTION WITH OPTIONS is : ",
-      questionWithOptions,
+      questionWithOptions
     );
 
     return res.json({
@@ -276,31 +249,31 @@ export const updateScreeningQuestion = async (req, res) => {
     if (question_type !== undefined) updateData.question_type = question_type;
     if (data_type !== undefined) updateData.data_type = data_type;
 
-    // Nothing to update?
     if (Object.keys(updateData).length === 0 && options === undefined) {
       return res.status(400).json({ message: "No fields to update" });
     }
 
-    const questionWithOptions = await prisma.$transaction(async (tx) => {
-      // 1. UPSERT QUESTION
-      const question = await tx.screeningQuestionDefinition.update({
+    const questionWithOptions = await sequelize.transaction(async (t) => {
+      await ScreeningQuestionDefinition.update(updateData, {
         where: { id },
-        data: updateData,
+        transaction: t,
+      });
+      const question = await ScreeningQuestionDefinition.findByPk(id, {
+        transaction: t,
       });
 
-      // Only touch options if client sent them
       if (options !== undefined) {
-        await resetQuestionOptions(tx, question.id, options);
+        await resetQuestionOptions(t, question.id, options);
       }
-      // 2.3 RETURN CONSISTENT VIEW
-      return tx.screeningQuestionDefinition.findUnique({
-        where: { id: question.id },
-        include: { options: true },
+
+      return await ScreeningQuestionDefinition.findByPk(question.id, {
+        include: [{ model: ScreenQuestionOption, as: "options" }],
+        transaction: t,
       });
     });
     console.log(
       ">>>>> the value of the QUESTION WITH OPTIONS is : ",
-      questionWithOptions,
+      questionWithOptions
     );
 
     return res.json({
@@ -317,11 +290,11 @@ export const deleteScreeningQuestion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    await prisma.surveyQuotaOption.deleteMany({
+    await SurveyQuotaOption.destroy({
       where: { screeningQuestionId: id },
     });
 
-    await prisma.screeningQuestionDefinition.delete({ where: { id } });
+    await ScreeningQuestionDefinition.destroy({ where: { id } });
 
     return res.json({ message: "Screening Question deleted" });
   } catch (error) {

@@ -1,12 +1,12 @@
-import prisma from "../config/db.js";
+import { Response, Question, ResponseAnswer } from "../models/index.js";
 
 export const getSurveyReport = async (req, res) => {
   try {
     const { surveyId } = req.params;
-    const totalResponses = await prisma.response.count({ where: { surveyId } });
-    const questions = await prisma.question.findMany({
+    const totalResponses = await Response.count({ where: { surveyId } });
+    const questions = await Question.findAll({
       where: { surveyId },
-      include: { response_answers: true },
+      include: [{ model: ResponseAnswer, as: "response_answers" }],
     });
 
     res.json({ totalResponses, questions });

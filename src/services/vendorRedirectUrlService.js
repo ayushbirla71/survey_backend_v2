@@ -1,4 +1,4 @@
-import prisma from "../config/db.js";
+import { Vendor } from "../models/index.js";
 import { vendorRedirectUrlHandlers } from "../utils/vendorResolver.js";
 
 export const getRedirectUrlFromVendor = async (payload) => {
@@ -6,9 +6,8 @@ export const getRedirectUrlFromVendor = async (payload) => {
 
   const { vendorId } = payload;
 
-  const vendor = await prisma.vendor.findUnique({
-    where: { id: vendorId },
-    select: { key: true }, // INNOVATEMR / INNOVATEMR / SURVEY96
+  const vendor = await Vendor.findByPk(vendorId, {
+    attributes: ["key"],
   });
 
   if (!vendor) {

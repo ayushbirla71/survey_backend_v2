@@ -1,4 +1,11 @@
-import prisma from "../config/db.js";
+import {
+  ShareToken,
+  Survey,
+  Question,
+  Option,
+  MediaAsset,
+  QuestionCategory,
+} from "../models/index.js";
 import crypto from "crypto";
 import { generatePresignedUrl } from "../utils/uploadToS3.js";
 
@@ -14,18 +21,14 @@ export const shareSurvey = async (req, res) => {
   try {
     const { surveyId, type, recipients, agentUserUniqueIds } = req.body;
 
-    // Check survey exists
-    const survey = await prisma.survey.findUnique({ where: { id: surveyId } });
+    const survey = await Survey.findByPk(surveyId);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
     let shareTokens = [];
 
     if (type === "NONE") {
-      // Create a single public token
       const token_hash = generateTokenHash();
-      const token = await prisma.shareToken.create({
-        data: { surveyId, token_hash },
-      });
+      const token = await ShareToken.create({ surveyId, token_hash });
       shareTokens.push(token);
       const publicLink = `${process.env.FRONTEND_URL}/survey/${token.token_hash}`;
 
@@ -35,11 +38,12 @@ export const shareSurvey = async (req, res) => {
         shareCode: token.token_hash,
       });
     } else if (type === "AGENT") {
-      // Create a token for each agent
       for (const agentId of agentUserUniqueIds) {
         const token_hash = generateTokenHash();
-        const token = await prisma.shareToken.create({
-          data: { surveyId, token_hash, agentUserUniqueId: agentId },
+        const token = await ShareToken.create({
+          surveyId,
+          token_hash,
+          agentUserUniqueId: agentId,
         });
         shareTokens.push({
           agentUserUniqueId: agentId,
@@ -53,19 +57,18 @@ export const shareSurvey = async (req, res) => {
       });
     }
 
-    // Personalized sharing
-    for (const recipient of recipients) {
-      const token_hash = generateTokenHash();
-      const tokenData = {
-        surveyId,
-        token_hash,
-        recipient_email: recipient.email,
-        recipient_mobile: recipient.mobile_no,
-      };
-      const token = await prisma.shareToken.create({ data: tokenData });
-      shareTokens.push(token);
-
-      // Optional: send email / WhatsApp message here using your notification service
+    if (Array.isArray(recipients)) {
+      for (const recipient of recipients) {
+        const token_hash = generateTokenHash();
+        const tokenData = {
+          surveyId,
+          token_hash,
+          recipient_email: recipient.email,
+          recipient_mobile: recipient.mobile_no,
+        };
+        const token = await ShareToken.create(tokenData);
+        shareTokens.push(token);
+      }
     }
 
     res.json({ message: "Survey shared with recipients", shareTokens });
@@ -83,11 +86,10 @@ export const createSurveyTestToken = async (req, res) => {
     const surveyId = req.body.surveyId;
     console.log(">>>>>> the value of the SURVEY ID is  : ", surveyId);
 
-    // Check survey exists
-    const survey = await prisma.survey.findUnique({ where: { id: surveyId } });
+    const survey = await Survey.findByPk(surveyId);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
-    const shareToken = await prisma.shareToken.findFirst({
+    const shareToken = await ShareToken.findOne({
       where: { surveyId, isTest: true },
     });
     console.log(">>>>> the value of the SHARE TOKEN is : ", shareToken);
@@ -96,10 +98,11 @@ export const createSurveyTestToken = async (req, res) => {
     if (shareToken) {
       publicLink = `${process.env.FRONTEND_URL}/survey/${shareToken.token_hash}`;
     } else {
-      // Create a single public token
       const token_hash = generateTokenHash();
-      const token = await prisma.shareToken.create({
-        data: { surveyId, token_hash, isTest: true },
+      const token = await ShareToken.create({
+        surveyId,
+        token_hash,
+        isTest: true,
       });
 
       publicLink = `${process.env.FRONTEND_URL}/survey/${token.token_hash}`;
@@ -122,44 +125,56 @@ export const validateToken = async (req, res) => {
   try {
     const { token } = req.params;
 
-    const shareToken = await prisma.shareToken.findFirst({
+    const shareTokenModel = await ShareToken.findOne({
       where: { token_hash: token },
-      include: {
-        survey: {
-          include: {
-            questions: {
-              include: {
-                options: {
-                  include: { mediaAsset: true },
+      include: [
+        {
+          model: Survey,
+          as: "survey",
+          include: [
+            {
+              model: Question,
+              as: "questions",
+              separate: true,
+              order: [["order_index", "ASC"]],
+              include: [
+                {
+                  model: Option,
+                  as: "options",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                rowOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "rowOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                columnOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "columnOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                mediaAsset: true,
-                category: true,
-              },
+                { model: MediaAsset, as: "mediaAsset" },
+                { model: QuestionCategory, as: "category" },
+              ],
             },
-          },
+          ],
         },
-      },
+      ],
     });
-    console.log(">>>>> the value of the SHARE TOKEN is : ", shareToken);
 
-    if (!shareToken) return res.status(404).json({ message: "Invalid Token." });
+    if (!shareTokenModel) return res.status(404).json({ message: "Invalid Token." });
+    const shareToken = shareTokenModel.toJSON();
+
     if (shareToken.used)
       return res.status(400).json({ message: "Token already used." });
-    // --- Inject presigned URLs ---
-    const questions = shareToken.survey.questions;
 
-    // Helper to attach presigned URL
+    const questions = shareToken.survey?.questions || [];
+
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
         process.env.AWS_BUCKET_NAME,
-        mediaAsset.url,
+        mediaAsset.url
       );
       return mediaAsset;
     };
@@ -167,15 +182,15 @@ export const validateToken = async (req, res) => {
     for (const q of questions) {
       if (q.mediaAsset) await attachPresignedUrl(q.mediaAsset);
 
-      for (const opt of q.options) {
+      for (const opt of q.options || []) {
         if (opt.mediaAsset) await attachPresignedUrl(opt.mediaAsset);
       }
 
-      for (const row of q.rowOptions) {
+      for (const row of q.rowOptions || []) {
         if (row.mediaAsset) await attachPresignedUrl(row.mediaAsset);
       }
 
-      for (const col of q.columnOptions) {
+      for (const col of q.columnOptions || []) {
         if (col.mediaAsset) await attachPresignedUrl(col.mediaAsset);
       }
     }
@@ -196,10 +211,10 @@ export const validateToken = async (req, res) => {
  */
 export const markTokenUsed = async (tokenHash) => {
   try {
-    await prisma.shareToken.updateMany({
-      where: { token_hash: tokenHash, isTest: false },
-      data: { used: true },
-    });
+    await ShareToken.update(
+      { used: true },
+      { where: { token_hash: tokenHash, isTest: false } }
+    );
   } catch (error) {
     console.error("Mark Token Used Error:", error);
   }

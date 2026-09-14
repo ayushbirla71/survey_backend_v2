@@ -1,4 +1,5 @@
 import { generateTokenHash } from "./shareController.js";
+import { Survey, ShareToken } from "../models/index.js";
 
 export const innovateWebhook = async (req, res) => {
   try {
@@ -9,38 +10,34 @@ export const innovateWebhook = async (req, res) => {
     console.log(">>>>> the value of the TOKEN is : ", tk);
     console.log(">>>>> the value of the PID is : ", pid);
 
-    const survey = await prisma.survey.findUnique({
-      where: { id: surveyId },
-    });
+    const survey = await Survey.findByPk(surveyId);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
-    const isTestUser = tk.toLowerCase().includes("testuser");
+    const isTestUser = tk ? tk.toLowerCase().includes("testuser") : false;
     console.log(">>>>> the value of the IS TEST USER is : ", isTestUser);
 
-    const existingToken = await prisma.shareToken.findFirst({
+    const existingToken = await ShareToken.findOne({
       where: { vendor_respondent_id: tk + "_BR_" + pid, isTest: isTestUser },
     });
     console.log(
       ">>>>> the value of the EXISTING TOKEN in innovateWebhook is : ",
-      existingToken,
+      existingToken
     );
     if (existingToken) {
       const surveyLink = `${process.env.FRONTEND_URL}/survey/${existingToken.token_hash}`;
       console.log(
         ">>>>> the value of the SURVEY LINK in innovateWebhook is : ",
-        surveyLink,
+        surveyLink
       );
       return res.redirect(surveyLink);
     }
 
     const token_hash = generateTokenHash();
-    const token = await prisma.shareToken.create({
-      data: {
-        surveyId,
-        token_hash,
-        vendor_respondent_id: tk + "_BR_" + pid,
-        isTest: isTestUser,
-      },
+    const token = await ShareToken.create({
+      surveyId,
+      token_hash,
+      vendor_respondent_id: tk + "_BR_" + pid,
+      isTest: isTestUser,
     });
     if (!token)
       return res.status(500).json({ message: "Token creation failed" });
@@ -62,38 +59,34 @@ export const survey96Webhook = async (req, res) => {
     console.log(">>>>> the value of the TOKEN is : ", tk);
     console.log(">>>>> the value of the PID is : ", pid);
 
-    const survey = await prisma.survey.findUnique({
-      where: { id: surveyId },
-    });
+    const survey = await Survey.findByPk(surveyId);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
-    const isTestUser = tk.toLowerCase().includes("testuser");
+    const isTestUser = tk ? tk.toLowerCase().includes("testuser") : false;
     console.log(">>>>> the value of the IS TEST USER is : ", isTestUser);
 
-    const existingToken = await prisma.shareToken.findFirst({
+    const existingToken = await ShareToken.findOne({
       where: { vendor_respondent_id: tk + "_BR_" + pid, isTest: isTestUser },
     });
     console.log(
       ">>>>> the value of the EXISTING TOKEN in survey96Webhook is : ",
-      existingToken,
+      existingToken
     );
     if (existingToken) {
       const surveyLink = `${process.env.FRONTEND_URL}/survey/${existingToken.token_hash}`;
       console.log(
         ">>>>> the value of the SURVEY LINK in survey96Webhook is : ",
-        surveyLink,
+        surveyLink
       );
       return res.redirect(surveyLink);
     }
 
     const token_hash = generateTokenHash();
-    const token = await prisma.shareToken.create({
-      data: {
-        surveyId,
-        token_hash,
-        vendor_respondent_id: tk + "_BR_" + pid,
-        isTest: isTestUser,
-      },
+    const token = await ShareToken.create({
+      surveyId,
+      token_hash,
+      vendor_respondent_id: tk + "_BR_" + pid,
+      isTest: isTestUser,
     });
     if (!token)
       return res.status(500).json({ message: "Token creation failed" });

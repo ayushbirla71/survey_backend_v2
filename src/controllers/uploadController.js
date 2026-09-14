@@ -1,4 +1,9 @@
-import prisma from "../config/db.js";
+import sequelize, {
+  MediaAsset,
+  Question,
+  Option,
+  ResponseAnswer,
+} from "../models/index.js";
 import {
   deleteFromS3,
   generatePresignedUrl,
@@ -20,21 +25,17 @@ export const uploadMedia = async (req, res) => {
     console.log(">>>>> the value of the FILE is : ", file);
     if (!file) return res.status(400).json({ message: "No file provided" });
 
-    // for public access collection
-    // const fileUrl = await uploadToS3(file, "survey96/survey_media");
     const fileUrl = await uploadToS3(file, "survey_media");
     console.log(">>>>> the value of the FILE URL is : ", fileUrl);
 
     const meta = { ...file };
     delete meta.buffer;
 
-    const media = await prisma.mediaAsset.create({
-      data: {
-        type: detectQuestionTypeFromFile(file),
-        url: fileUrl,
-        uploaded_by: req.user.id,
-        meta,
-      },
+    const media = await MediaAsset.create({
+      type: detectQuestionTypeFromFile(file),
+      url: fileUrl,
+      uploaded_by: req.user.id,
+      meta,
     });
 
     media.url = await generatePresignedUrl(
@@ -60,9 +61,7 @@ export const deleteMedia = async (req, res) => {
   }
 
   try {
-    const media = await prisma.mediaAsset.findUnique({
-      where: { id: mediaId },
-    });
+    const media = await MediaAsset.findByPk(mediaId);
 
     if (!media) {
       return res.status(404).json({ message: "Media not found" });
@@ -71,30 +70,37 @@ export const deleteMedia = async (req, res) => {
     const s3Key = media.url; // stored key, NOT presigned URL
 
     // DB CLEANUP FIRST (TRANSACTION)
-    await prisma.$transaction([
+    const transaction = await sequelize.transaction();
+    try {
       // 1. Remove media from Question
-      prisma.question.updateMany({
-        where: { mediaId },
-        data: { mediaId: null, question_type: "TEXT" },
-      }),
+      await Question.update(
+        { mediaId: null, question_type: "TEXT" },
+        { where: { mediaId }, transaction }
+      );
 
       // 2. Remove media from Option
-      prisma.option.updateMany({
-        where: { mediaId },
-        data: { mediaId: null },
-      }),
+      await Option.update(
+        { mediaId: null },
+        { where: { mediaId }, transaction }
+      );
 
       // 3. Remove media from ResponseAnswer
-      prisma.responseAnswer.updateMany({
-        where: { mediaId },
-        data: { mediaId: null },
-      }),
+      await ResponseAnswer.update(
+        { mediaId: null },
+        { where: { mediaId }, transaction }
+      );
 
       // 4. Delete MediaAsset itself
-      prisma.mediaAsset.delete({
+      await MediaAsset.destroy({
         where: { id: mediaId },
-      }),
-    ]);
+        transaction,
+      });
+
+      await transaction.commit();
+    } catch (txErr) {
+      await transaction.rollback();
+      throw txErr;
+    }
 
     // External side-effect LAST
     try {

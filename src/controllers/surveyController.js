@@ -1,5 +1,16 @@
-import { response } from "express";
-import prisma from "../config/db.js";
+import {
+  Survey,
+  SurveyCategory,
+  Question,
+  Option,
+  MediaAsset,
+  QuestionCategory,
+  Response,
+  ShareToken,
+  SurveyVendorConfig,
+  AIGeneratedQuestion,
+  User,
+} from "../models/index.js";
 import {
   generateSurveyQuestions,
   generateFallbackQuestions,
@@ -24,22 +35,21 @@ export const createSurvey = async (req, res) => {
       scheduled_type,
       surveyCategoryId,
       autoGenerateQuestions,
+      categoryOfSurvey,
     } = req.body;
 
-    const survey = await prisma.survey.create({
-      data: {
-        title,
-        description,
-        userId: req.user.id, // comes from JWT middleware
-        survey_send_by: survey_send_by || "NONE",
-        flow_type: flow_type || "STATIC",
-        settings: settings || {},
-        status: status || "DRAFT",
-        scheduled_date: scheduled_date || null,
-        scheduled_type: scheduled_type || "IMMEDIATE",
-        surveyCategoryId: surveyCategoryId || null,
-        autoGenerateQuestions: autoGenerateQuestions || false,
-      },
+    const survey = await Survey.create({
+      title,
+      description,
+      userId: req.user.id, // comes from JWT middleware
+      survey_send_by: survey_send_by || "NONE",
+      flow_type: flow_type || "STATIC",
+      settings: settings || {},
+      status: status || "DRAFT",
+      scheduled_date: scheduled_date || null,
+      scheduled_type: scheduled_type || "IMMEDIATE",
+      surveyCategoryId: surveyCategoryId || null,
+      autoGenerateQuestions: autoGenerateQuestions || false,
     });
 
     let aiGeneratedQuestions = [];
@@ -68,16 +78,15 @@ export const createSurvey = async (req, res) => {
           ai_prompt: question.ai_prompt,
           ai_model: question.ai_model,
           confidence_score: question.confidence_score,
+          categoryId: question.categoryId || surveyCategoryId,
         }));
 
-        aiGeneratedQuestions = await prisma.aIGeneratedQuestion.createMany({
-          data: questionsToCreate,
-        });
+        await AIGeneratedQuestion.bulkCreate(questionsToCreate);
 
         // Fetch the created questions to return in response
-        aiGeneratedQuestions = await prisma.aIGeneratedQuestion.findMany({
+        aiGeneratedQuestions = await AIGeneratedQuestion.findAll({
           where: { surveyId: survey.id },
-          orderBy: { order_index: "asc" },
+          order: [["order_index", "ASC"]],
         });
       } catch (aiError) {
         console.error("AI Question Generation Error:", aiError);
@@ -87,7 +96,7 @@ export const createSurvey = async (req, res) => {
         try {
           const fallbackQuestions = generateFallbackQuestions(
             { title, categoryOfSurvey },
-            5,
+            5
           );
 
           const questionsToCreate = fallbackQuestions.map(
@@ -101,16 +110,15 @@ export const createSurvey = async (req, res) => {
               ai_prompt: question.ai_prompt,
               ai_model: question.ai_model,
               confidence_score: question.confidence_score,
-            }),
+              categoryId: question.categoryId || surveyCategoryId,
+            })
           );
 
-          await prisma.aIGeneratedQuestion.createMany({
-            data: questionsToCreate,
-          });
+          await AIGeneratedQuestion.bulkCreate(questionsToCreate);
 
-          aiGeneratedQuestions = await prisma.aIGeneratedQuestion.findMany({
+          aiGeneratedQuestions = await AIGeneratedQuestion.findAll({
             where: { surveyId: survey.id },
-            orderBy: { order_index: "asc" },
+            order: [["order_index", "ASC"]],
           });
         } catch (fallbackError) {
           console.error("Fallback Question Generation Error:", fallbackError);
@@ -150,20 +158,18 @@ export const createSurvey_v2 = async (req, res) => {
       autoGenerateQuestions,
     } = req.body;
 
-    const survey = await prisma.survey.create({
-      data: {
-        title,
-        description,
-        userId: req.user.id, // comes from JWT middleware
-        survey_send_by: survey_send_by || "NONE",
-        flow_type: flow_type || "STATIC",
-        settings: settings || {},
-        status: status || "DRAFT",
-        scheduled_date: scheduled_date || null,
-        scheduled_type: scheduled_type || "IMMEDIATE",
-        surveyCategoryId: surveyCategoryId || null,
-        autoGenerateQuestions: autoGenerateQuestions || false,
-      },
+    const survey = await Survey.create({
+      title,
+      description,
+      userId: req.user.id, // comes from JWT middleware
+      survey_send_by: survey_send_by || "NONE",
+      flow_type: flow_type || "STATIC",
+      settings: settings || {},
+      status: status || "DRAFT",
+      scheduled_date: scheduled_date || null,
+      scheduled_type: scheduled_type || "IMMEDIATE",
+      surveyCategoryId: surveyCategoryId || null,
+      autoGenerateQuestions: autoGenerateQuestions || false,
     });
 
     let aiGeneratedQuestions = [];
@@ -172,28 +178,23 @@ export const createSurvey_v2 = async (req, res) => {
     // Generate AI questions if requested
     if (autoGenerateQuestions) {
       try {
-        const surveyCategoryDetails = await prisma.surveyCategory.findUnique({
-          where: { id: surveyCategoryId },
-          select: { name: true },
-        });
-        // console.log(
-        //   ">>>>> the value of the surveyCategoryDetails is : ",
-        //   surveyCategoryDetails
-        // );
+        const surveyCategoryDetails = await SurveyCategory.findByPk(
+          surveyCategoryId,
+          { attributes: ["name"] }
+        );
 
-        // Try to generate questions using GeminiAI
         const generatedQuestions = await generateSurveyQuestionsWithCategory(
           title,
-          surveyCategoryDetails.name || "General",
-          description,
+          surveyCategoryDetails?.name || "General",
+          description
         );
         console.log("Generated Questions:", generatedQuestions);
 
         if (!generatedQuestions || generatedQuestions.length === 0) {
-          await prisma.survey.update({
-            where: { id: survey.id },
-            data: { autoGenerateQuestions: false },
-          });
+          await Survey.update(
+            { autoGenerateQuestions: false },
+            { where: { id: survey.id } }
+          );
           throw new Error("No questions generated");
         }
 
@@ -208,39 +209,38 @@ export const createSurvey_v2 = async (req, res) => {
               required: question.required || true,
               categoryId: question.categoryId,
             };
-            // console.log(">>>>>>> QUESTION ----  -> ", question);
-
-            // console.log(">>>>>>> OPTIONS -> ", question.options);
 
             const response = await createQuestionsWithOptions(
               questionData,
               question.options || [],
               question.categoryId,
               question.rowOptions || [],
-              question.columnOptions || [],
+              question.columnOptions || []
             );
 
-            // console.log(">>>>>>> RESPONSE -> ", response);
-
-            const questionWithOptions = await prisma.question.findUnique({
-              where: { id: response.id },
-              include: {
-                options: {
-                  include: { mediaAsset: true },
+            const questionWithOptions = await Question.findByPk(response.id, {
+              include: [
+                {
+                  model: Option,
+                  as: "options",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                rowOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "rowOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                columnOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "columnOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                // mediaAsset: true,
-                category: true,
-              },
+                { model: QuestionCategory, as: "category" },
+              ],
             });
 
             return questionWithOptions;
-          },
+          }
         );
 
         aiGeneratedQuestions = await Promise.all(questionsToCreatePromises);
@@ -250,12 +250,7 @@ export const createSurvey_v2 = async (req, res) => {
       }
     }
 
-    // console.log(
-    //   ">>>>>> the value of the AI Generated Questions is : ",
-    //   aiGeneratedQuestions
-    // );
-
-    const response = {
+    const responsePayload = {
       message: "Survey created",
       survey,
       ...(autoGenerateQuestions && {
@@ -263,9 +258,8 @@ export const createSurvey_v2 = async (req, res) => {
         ...(aiGenerationError && { aiGenerationWarning: aiGenerationError }),
       }),
     };
-    // console.log("Create Survey Response:", response);
 
-    return res.status(201).json(response);
+    return res.status(201).json(responsePayload);
   } catch (error) {
     console.error("Create Survey Error:", error);
     return res.status(500).json({ message: "Server error" });
@@ -277,17 +271,20 @@ export const createSurvey_v2 = async (req, res) => {
  */
 export const getSurveys = async (req, res) => {
   try {
-    const surveys = await prisma.survey.findMany({
+    const surveys = await Survey.findAll({
       where: { userId: req.user.id, is_deleted: false },
-      orderBy: { created_at: "desc" },
-      include: {
-        questions: true,
-        share_tokens: {
+      order: [["created_at", "DESC"]],
+      include: [
+        { model: Question, as: "questions" },
+        {
+          model: ShareToken,
+          as: "share_tokens",
           where: { isTest: false },
+          required: false,
         },
-        responses: true,
-        vendorConfig: true,
-      },
+        { model: Response, as: "responses" },
+        { model: SurveyVendorConfig, as: "vendorConfig" },
+      ],
     });
 
     res.json({ surveys });
@@ -304,69 +301,82 @@ export const getSurveyById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const survey = await prisma.survey.findFirst({
+    const survey = await Survey.findOne({
       where: { id, is_deleted: false },
-      include: {
-        questions: {
-          orderBy: { order_index: "asc" },
-          include: {
-            options: {
-              include: { mediaAsset: true },
+      include: [
+        {
+          model: Question,
+          as: "questions",
+          separate: true,
+          order: [["order_index", "ASC"]],
+          include: [
+            {
+              model: Option,
+              as: "options",
+              include: [{ model: MediaAsset, as: "mediaAsset" }],
             },
-            rowOptions: {
-              include: { mediaAsset: true },
+            {
+              model: Option,
+              as: "rowOptions",
+              include: [{ model: MediaAsset, as: "mediaAsset" }],
             },
-            columnOptions: {
-              include: { mediaAsset: true },
+            {
+              model: Option,
+              as: "columnOptions",
+              include: [{ model: MediaAsset, as: "mediaAsset" }],
             },
-            mediaAsset: true,
-            category: true,
-          },
+            { model: MediaAsset, as: "mediaAsset" },
+            { model: QuestionCategory, as: "category" },
+          ],
         },
-      },
+      ],
     });
 
     if (!survey) return res.status(404).json({ message: "Survey not found" });
+
+    const surveyJson = survey.toJSON();
+
     // Helper to attach presigned URL
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
         process.env.AWS_BUCKET_NAME,
-        mediaAsset.url,
+        mediaAsset.url
       );
       return mediaAsset;
     };
 
     // Process all nested media assets
-    for (const q of survey.questions) {
-      // Question main media
-      if (q.mediaAsset) {
-        await attachPresignedUrl(q.mediaAsset);
-      }
-
-      // Options media
-      for (const opt of q.options) {
-        if (opt.mediaAsset) {
-          await attachPresignedUrl(opt.mediaAsset);
+    if (surveyJson.questions) {
+      for (const q of surveyJson.questions) {
+        if (q.mediaAsset) {
+          await attachPresignedUrl(q.mediaAsset);
         }
-      }
-
-      // Row Options media
-      for (const row of q.rowOptions) {
-        if (row.mediaAsset) {
-          await attachPresignedUrl(row.mediaAsset);
+        if (q.options) {
+          for (const opt of q.options) {
+            if (opt.mediaAsset) {
+              await attachPresignedUrl(opt.mediaAsset);
+            }
+          }
         }
-      }
-
-      // Column Options media
-      for (const col of q.columnOptions) {
-        if (col.mediaAsset) {
-          await attachPresignedUrl(col.mediaAsset);
+        if (q.rowOptions) {
+          for (const row of q.rowOptions) {
+            if (row.mediaAsset) {
+              await attachPresignedUrl(row.mediaAsset);
+            }
+          }
+        }
+        if (q.columnOptions) {
+          for (const col of q.columnOptions) {
+            if (col.mediaAsset) {
+              await attachPresignedUrl(col.mediaAsset);
+            }
+          }
         }
       }
     }
 
-    res.json({ survey });
+    res.json({ survey: surveyJson });
   } catch (error) {
     console.error("Get Survey Error:", error);
     res.status(500).json({ message: "Server error" });
@@ -380,12 +390,11 @@ export const updateSurvey = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const survey = await prisma.survey.updateMany({
+    const [affectedCount] = await Survey.update(req.body, {
       where: { id, userId: req.user.id, is_deleted: false },
-      data: req.body,
     });
 
-    if (survey.count === 0)
+    if (affectedCount === 0)
       return res
         .status(404)
         .json({ message: "Survey not found or not authorized" });
@@ -402,19 +411,17 @@ export const updateSurvey_v2 = async (req, res) => {
     const { id } = req.params;
     const { autoGenerateQuestions } = req.body;
 
-    const updatedSurvey = await prisma.survey.updateMany({
+    const [affectedCount] = await Survey.update(req.body, {
       where: { id, userId: req.user.id, is_deleted: false },
-      // data: { autoGenerateQuestions: autoGenerateQuestions },
-      data: req.body,
     });
-    console.log(">>>>>> the value of the UPDATED SURVEY is : ", updatedSurvey);
+    console.log(">>>>>> the value of the UPDATED SURVEY count is : ", affectedCount);
 
-    if (updatedSurvey.count === 0)
+    if (affectedCount === 0)
       return res
         .status(404)
         .json({ message: "Survey not found or not authorized" });
 
-    const survey = await prisma.survey.findFirst({
+    const survey = await Survey.findOne({
       where: { id, userId: req.user.id, is_deleted: false },
     });
     console.log(">>>>>> the value of the SURVEY is : ", survey);
@@ -422,31 +429,23 @@ export const updateSurvey_v2 = async (req, res) => {
     let aiGeneratedQuestions = [];
     let aiGenerationError = null;
 
-    // Helper to detect if client has gone away
-    // const requestAborted = () => req.aborted || req.destroyed;
-
     if (autoGenerateQuestions) {
       try {
-        const surveyCategoryDetails = await prisma.surveyCategory.findUnique({
-          where: { id: survey.surveyCategoryId },
-          select: { name: true },
-        });
+        const surveyCategoryDetails = await SurveyCategory.findByPk(
+          survey.surveyCategoryId,
+          { attributes: ["name"] }
+        );
 
-        // if (requestAborted()) {
-        //   console.log("Request aborted before AI generation");
-        // } else {
-        // Try to generate questions using GeminiAI
         const generatedQuestions = await generateSurveyQuestionsWithCategory(
           survey.title,
-          surveyCategoryDetails.name || "General",
-          survey.description,
+          surveyCategoryDetails?.name || "General",
+          survey.description
         );
         console.log(
           ">>>>>>>>>####### the Value of GENERATED QUESTIONS is : ",
-          generatedQuestions,
+          generatedQuestions
         );
 
-        // Save generated questions to database
         const questionsToCreatePromises = generatedQuestions.map(
           async (question, index) => {
             const questionData = {
@@ -463,32 +462,35 @@ export const updateSurvey_v2 = async (req, res) => {
               question.options || [],
               question.categoryId,
               question.rowOptions || [],
-              question.columnOptions || [],
+              question.columnOptions || []
             );
 
-            const questionWithOptions = await prisma.question.findUnique({
-              where: { id: response.id },
-              include: {
-                options: {
-                  include: { mediaAsset: true },
+            const questionWithOptions = await Question.findByPk(response.id, {
+              include: [
+                {
+                  model: Option,
+                  as: "options",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                rowOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "rowOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                columnOptions: {
-                  include: { mediaAsset: true },
+                {
+                  model: Option,
+                  as: "columnOptions",
+                  include: [{ model: MediaAsset, as: "mediaAsset" }],
                 },
-                // mediaAsset: true,
-                category: true,
-              },
+                { model: QuestionCategory, as: "category" },
+              ],
             });
 
             return questionWithOptions;
-          },
+          }
         );
 
         aiGeneratedQuestions = await Promise.all(questionsToCreatePromises);
-        // }
       } catch (aiError) {
         console.error("AI Question Generation Error:", aiError);
         aiGenerationError = aiError.message;
@@ -518,12 +520,12 @@ export const deleteSurvey = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const survey = await prisma.survey.updateMany({
-      where: { id, userId: req.user.id, is_deleted: false },
-      data: { is_deleted: true },
-    });
+    const [affectedCount] = await Survey.update(
+      { is_deleted: true },
+      { where: { id, userId: req.user.id, is_deleted: false } }
+    );
 
-    if (survey.count === 0)
+    if (affectedCount === 0)
       return res
         .status(404)
         .json({ message: "Survey not found or not authorized" });
@@ -539,7 +541,6 @@ export const getSurveysByUser = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // validation
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -547,37 +548,37 @@ export const getSurveysByUser = async (req, res) => {
       });
     }
 
-    const surveys = await prisma.survey.findMany({
+    const surveys = await Survey.findAll({
       where: {
         userId: userId,
         is_deleted: false,
       },
+      include: [
+        {
+          model: User,
+          as: "user",
+          attributes: ["id", "name", "email"],
+        },
+        { model: SurveyCategory, as: "surveyCategory" },
+        { model: Question, as: "questions" },
+        { model: Response, as: "responses" },
+      ],
+      order: [["created_at", "DESC"]],
+    });
 
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        surveyCategory: true,
-        _count: {
-          select: {
-            questions: true,
-            responses: true,
-          },
-        },
-      },
-      orderBy: {
-        created_at: "desc",
-      },
+    const formattedSurveys = surveys.map((s) => {
+      const json = s.toJSON();
+      json._count = {
+        questions: json.questions ? json.questions.length : 0,
+        responses: json.responses ? json.responses.length : 0,
+      };
+      return json;
     });
 
     return res.status(200).json({
       success: true,
-      total: surveys.length,
-      data: surveys,
+      total: formattedSurveys.length,
+      data: formattedSurveys,
     });
   } catch (error) {
     console.log(">>>>> the error in the getSurveysByUser is : ", error);

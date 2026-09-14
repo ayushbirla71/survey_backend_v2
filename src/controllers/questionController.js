@@ -1,4 +1,10 @@
-import prisma from "../config/db.js";
+import {
+  Question,
+  Option,
+  QuestionCategory,
+  MediaAsset,
+  AIGeneratedQuestion,
+} from "../models/index.js";
 import { generatePresignedUrl } from "../utils/uploadToS3.js";
 
 export const createQuestionsWithOptions = async (
@@ -9,30 +15,22 @@ export const createQuestionsWithOptions = async (
   columnOptions
 ) => {
   try {
-    // console.log(
-    //   ">>>>>>>> ENTERED the create Question with OPtions function......."
-    // );
-    // console.log(">>>>> the value of the QUESTION DATA is : ", questionData);
-
     // Create Question
-    const question = await prisma.question.create({
-      data: questionData,
-    });
+    const question = await Question.create(questionData);
 
     let optionRecords = [];
 
     // Get category type
-    const category = await prisma.questionCategory.findUnique({
-      where: { id: categoryId },
-      select: { type_name: true },
-    });
+    let categoryType = "";
+    if (categoryId) {
+      const category = await QuestionCategory.findByPk(categoryId, {
+        attributes: ["type_name"],
+      });
+      categoryType = category?.type_name?.toLowerCase() || "";
+    }
 
-    const categoryType = category?.type_name?.toLowerCase();
-    // console.log(">>>>>> the value of the CATEGORY TYPE is : ", categoryType);
-
-    // Step 3: Handle Options based on Category Type
+    // Handle Options based on Category Type
     switch (categoryType) {
-      // Multiple Choice, Checkbox, Dropdown — store text and optional media
       case "multiple choice":
       case "checkboxes":
       case "dropdown":
@@ -46,14 +44,11 @@ export const createQuestionsWithOptions = async (
         }
         break;
 
-      // Text input types (short answer, paragraph, number)
       case "short answer":
       case "paragraph":
       case "number":
-        // No options needed for text input types
         break;
 
-      // Linear Scale / Rating / NPS — store scale values and labels
       case "linear scale":
       case "rating":
       case "nps":
@@ -70,31 +65,27 @@ export const createQuestionsWithOptions = async (
         }
         break;
 
-      // Multi-choice grid or checkbox grid — need row and column mapping
       case "multi-choice grid":
       case "checkbox grid":
-        // Row options
         if (rowOptions && rowOptions.length > 0) {
           const rowOptionRecords = rowOptions.map((opt) => ({
             text: opt.text || "",
             questionId: question.id,
-            rowQuestionOptionId: question.id, // links to this question as row
+            rowQuestionOptionId: question.id,
           }));
           optionRecords.push(...rowOptionRecords);
         }
 
-        // Column options
         if (columnOptions && columnOptions.length > 0) {
           const columnOptionRecords = columnOptions.map((opt) => ({
             text: opt.text || "",
             questionId: question.id,
-            columnQuestionOptionId: question.id, // links to this question as column
+            columnQuestionOptionId: question.id,
           }));
           optionRecords.push(...columnOptionRecords);
         }
         break;
 
-      // File upload, Date, Time — store in text field or media as needed
       case "file upload":
         if (options && options.length > 0) {
           optionRecords = options.map((opt) => ({
@@ -116,7 +107,6 @@ export const createQuestionsWithOptions = async (
         break;
 
       default:
-        // For safety fallback
         if (options && options.length > 0) {
           optionRecords = options.map((opt) => ({
             text: opt.text || "",
@@ -126,11 +116,8 @@ export const createQuestionsWithOptions = async (
         break;
     }
 
-    // Step 4: Bulk Create Options
     if (optionRecords.length > 0) {
-      await prisma.option.createMany({
-        data: optionRecords,
-      });
+      await Option.bulkCreate(optionRecords);
     }
 
     return question;
@@ -169,6 +156,26 @@ const signQuestion = async (q) => {
   return q;
 };
 
+const questionIncludeOptions = [
+  {
+    model: Option,
+    as: "options",
+    include: [{ model: MediaAsset, as: "mediaAsset" }],
+  },
+  {
+    model: Option,
+    as: "rowOptions",
+    include: [{ model: MediaAsset, as: "mediaAsset" }],
+  },
+  {
+    model: Option,
+    as: "columnOptions",
+    include: [{ model: MediaAsset, as: "mediaAsset" }],
+  },
+  { model: MediaAsset, as: "mediaAsset" },
+  { model: QuestionCategory, as: "category" },
+];
+
 /**
  * Create Question
  */
@@ -193,7 +200,6 @@ export const createQuestion = async (req, res) => {
       allow_partial_rank,
     } = body;
 
-    // Prepare Question Data
     const questionData = {
       surveyId,
       question_type,
@@ -205,7 +211,7 @@ export const createQuestion = async (req, res) => {
     if (mediaId) questionData.mediaId = mediaId;
     if (max_rank_allowed) questionData.max_rank_allowed = max_rank_allowed;
     if (min_rank_required) questionData.min_rank_required = min_rank_required;
-    if (allow_partial_rank)
+    if (allow_partial_rank !== undefined)
       questionData.allow_partial_rank = allow_partial_rank;
 
     const question = await createQuestionsWithOptions(
@@ -217,19 +223,12 @@ export const createQuestion = async (req, res) => {
     );
     console.log(">>>>> the value of the QUESTION is : ", question);
 
-    // Step 5: Return Response
-    const questionWithOptions = await prisma.question.findUnique({
-      where: { id: question.id },
-      include: {
-        options: { include: { mediaAsset: true } },
-        rowOptions: { include: { mediaAsset: true } },
-        columnOptions: { include: { mediaAsset: true } },
-        mediaAsset: true,
-        category: true,
-      },
+    const questionWithOptionsModel = await Question.findByPk(question.id, {
+      include: questionIncludeOptions,
     });
 
-    // Same helper as before
+    const questionWithOptions = questionWithOptionsModel ? questionWithOptionsModel.toJSON() : null;
+
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
@@ -239,29 +238,18 @@ export const createQuestion = async (req, res) => {
       return mediaAsset;
     };
 
-    // Sign question-level media
-    if (questionWithOptions.mediaAsset) {
-      await attachPresignedUrl(questionWithOptions.mediaAsset);
-    }
-
-    // Sign options
-    for (const opt of questionWithOptions.options) {
-      if (opt.mediaAsset) {
-        await attachPresignedUrl(opt.mediaAsset);
+    if (questionWithOptions) {
+      if (questionWithOptions.mediaAsset) {
+        await attachPresignedUrl(questionWithOptions.mediaAsset);
       }
-    }
-
-    // Sign row options
-    for (const row of questionWithOptions.rowOptions) {
-      if (row.mediaAsset) {
-        await attachPresignedUrl(row.mediaAsset);
+      for (const opt of questionWithOptions.options || []) {
+        if (opt.mediaAsset) await attachPresignedUrl(opt.mediaAsset);
       }
-    }
-
-    // Sign column options
-    for (const col of questionWithOptions.columnOptions) {
-      if (col.mediaAsset) {
-        await attachPresignedUrl(col.mediaAsset);
+      for (const row of questionWithOptions.rowOptions || []) {
+        if (row.mediaAsset) await attachPresignedUrl(row.mediaAsset);
+      }
+      for (const col of questionWithOptions.columnOptions || []) {
+        if (col.mediaAsset) await attachPresignedUrl(col.mediaAsset);
       }
     }
 
@@ -282,25 +270,14 @@ export const getQuestionsBySurvey = async (req, res) => {
   try {
     const { surveyId } = req.params;
 
-    const questions = await prisma.question.findMany({
+    const questions = await Question.findAll({
       where: { surveyId },
-      orderBy: { order_index: "asc" },
-      include: {
-        options: {
-          include: { mediaAsset: true },
-        },
-        rowOptions: {
-          include: { mediaAsset: true },
-        },
-        columnOptions: {
-          include: { mediaAsset: true },
-        },
-        mediaAsset: true,
-        category: true,
-      },
+      order: [["order_index", "ASC"]],
+      include: questionIncludeOptions,
     });
 
-    // Same helper as before
+    const questionsJson = questions.map((q) => q.toJSON());
+
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
@@ -310,33 +287,20 @@ export const getQuestionsBySurvey = async (req, res) => {
       return mediaAsset;
     };
 
-    // Sign question-level media
-    if (questions.mediaAsset) {
-      await attachPresignedUrl(questions.mediaAsset);
-    }
-
-    // Sign options
-    for (const opt of questions.options) {
-      if (opt.mediaAsset) {
-        await attachPresignedUrl(opt.mediaAsset);
+    for (const q of questionsJson) {
+      if (q.mediaAsset) await attachPresignedUrl(q.mediaAsset);
+      for (const opt of q.options || []) {
+        if (opt.mediaAsset) await attachPresignedUrl(opt.mediaAsset);
+      }
+      for (const row of q.rowOptions || []) {
+        if (row.mediaAsset) await attachPresignedUrl(row.mediaAsset);
+      }
+      for (const col of q.columnOptions || []) {
+        if (col.mediaAsset) await attachPresignedUrl(col.mediaAsset);
       }
     }
 
-    // Sign row options
-    for (const row of questions.rowOptions) {
-      if (row.mediaAsset) {
-        await attachPresignedUrl(row.mediaAsset);
-      }
-    }
-
-    // Sign column options
-    for (const col of questions.columnOptions) {
-      if (col.mediaAsset) {
-        await attachPresignedUrl(col.mediaAsset);
-      }
-    }
-
-    res.json(questions);
+    res.json(questionsJson);
   } catch (error) {
     console.error("Get Questions Error:", error);
     res.status(500).json({ message: "Server error" });
@@ -355,53 +319,17 @@ export const getQuestions = async (req, res) => {
     let questions;
 
     if (id) {
-      questions = await prisma.question.findUnique({
-        where: { id },
-        include: {
-          options: {
-            include: { mediaAsset: true },
-          },
-          rowOptions: {
-            include: { mediaAsset: true },
-          },
-          columnOptions: {
-            include: { mediaAsset: true },
-          },
-          mediaAsset: true,
-          category: true,
-        },
+      const q = await Question.findByPk(id, {
+        include: questionIncludeOptions,
       });
-
-      // For single question, also format grid types if needed
-      if (
-        questions &&
-        questions.rowOptions &&
-        questions.rowOptions.length > 0
-      ) {
-        // Keep the original structure but ensure grid options are accessible
-        // The frontend can use rowOptions and columnOptions directly
-      }
+      questions = q ? q.toJSON() : null;
     } else if (surveyId) {
-      questions = await prisma.question.findMany({
+      const qList = await Question.findAll({
         where: { surveyId },
-        orderBy: { order_index: "asc" },
-        include: {
-          options: {
-            include: { mediaAsset: true },
-          },
-          rowOptions: {
-            include: { mediaAsset: true },
-          },
-          columnOptions: {
-            include: { mediaAsset: true },
-          },
-          mediaAsset: true,
-          category: true,
-        },
+        order: [["order_index", "ASC"]],
+        include: questionIncludeOptions,
       });
-
-      // No need to restructure - frontend can access rowOptions and columnOptions directly
-      // The original structure is preserved
+      questions = qList.map((item) => item.toJSON());
     }
 
     if (!questions)
@@ -430,9 +358,9 @@ export const getQuestions = async (req, res) => {
 export const getAiGeneratedQuestions = async (req, res) => {
   try {
     const { surveyId } = req.params;
-    const aiQuestions = await prisma.aIGeneratedQuestion.findMany({
+    const aiQuestions = await AIGeneratedQuestion.findAll({
       where: { surveyId },
-      orderBy: { order_index: "asc" },
+      order: [["order_index", "ASC"]],
     });
 
     res.json(aiQuestions);
@@ -445,7 +373,6 @@ export const getAiGeneratedQuestions = async (req, res) => {
 /**
  * Update question
  */
-
 export const updateQuestion = async (req, res) => {
   try {
     const { id } = req.params;
@@ -464,7 +391,7 @@ export const updateQuestion = async (req, res) => {
       allow_partial_rank,
     } = req.body;
 
-    const question = await prisma.question.findUnique({ where: { id } });
+    const question = await Question.findByPk(id);
     if (!question)
       return res.status(404).json({ message: "Question not found" });
 
@@ -476,28 +403,24 @@ export const updateQuestion = async (req, res) => {
       categoryId,
       mediaId,
     };
-    if (max_rank_allowed) updateData.max_rank_allowed = max_rank_allowed;
-    if (min_rank_required) updateData.min_rank_required = min_rank_required;
-    if (allow_partial_rank) updateData.allow_partial_rank = allow_partial_rank;
+    if (max_rank_allowed !== undefined) updateData.max_rank_allowed = max_rank_allowed;
+    if (min_rank_required !== undefined) updateData.min_rank_required = min_rank_required;
+    if (allow_partial_rank !== undefined) updateData.allow_partial_rank = allow_partial_rank;
 
     // Step 1: Update question
-    await prisma.question.update({
-      where: { id },
-      data: updateData,
-    });
+    await Question.update(updateData, { where: { id } });
 
     // Step 2: Delete old options
-    await prisma.option.deleteMany({
-      where: { questionId: id },
-    });
+    await Option.destroy({ where: { questionId: id } });
 
     // Step 3: Get category type
-    const category = await prisma.questionCategory.findUnique({
-      where: { id: categoryId },
-      select: { type_name: true },
-    });
-
-    const categoryType = category?.type_name?.toLowerCase();
+    let categoryType = "";
+    if (categoryId) {
+      const category = await QuestionCategory.findByPk(categoryId, {
+        attributes: ["type_name"],
+      });
+      categoryType = category?.type_name?.toLowerCase() || "";
+    }
     console.log(">>>>>> UPDATE - Category Type is : ", categoryType);
 
     // Step 4: Recreate options based on category type
@@ -520,7 +443,6 @@ export const updateQuestion = async (req, res) => {
       case "short answer":
       case "paragraph":
       case "number":
-        // No options needed for text input types
         break;
 
       case "linear scale":
@@ -541,7 +463,6 @@ export const updateQuestion = async (req, res) => {
 
       case "multi-choice grid":
       case "checkbox grid":
-        // Row options
         if (rowOptions && rowOptions.length > 0) {
           const rowOptionRecords = rowOptions.map((opt) => ({
             text: opt.text || "",
@@ -551,7 +472,6 @@ export const updateQuestion = async (req, res) => {
           optionRecords.push(...rowOptionRecords);
         }
 
-        // Column options
         if (columnOptions && columnOptions.length > 0) {
           const columnOptionRecords = columnOptions.map((opt) => ({
             text: opt.text || "",
@@ -592,26 +512,15 @@ export const updateQuestion = async (req, res) => {
         break;
     }
 
-    // Step 5: Create new options
     if (optionRecords.length > 0) {
-      await prisma.option.createMany({
-        data: optionRecords,
-      });
+      await Option.bulkCreate(optionRecords);
     }
 
-    // Step 6: Fetch and return updated question with all relations
-    const finalQuestion = await prisma.question.findUnique({
-      where: { id },
-      include: {
-        options: { include: { mediaAsset: true } },
-        rowOptions: { include: { mediaAsset: true } },
-        columnOptions: { include: { mediaAsset: true } },
-        mediaAsset: true,
-        category: true,
-      },
+    const finalQuestionModel = await Question.findByPk(id, {
+      include: questionIncludeOptions,
     });
+    const finalQuestion = finalQuestionModel ? finalQuestionModel.toJSON() : null;
 
-    // Same helper as before
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
       mediaAsset.url = await generatePresignedUrl(
@@ -621,29 +530,18 @@ export const updateQuestion = async (req, res) => {
       return mediaAsset;
     };
 
-    // Sign question-level media
-    if (finalQuestion.mediaAsset) {
-      await attachPresignedUrl(finalQuestion.mediaAsset);
-    }
-
-    // Sign options
-    for (const opt of finalQuestion.options) {
-      if (opt.mediaAsset) {
-        await attachPresignedUrl(opt.mediaAsset);
+    if (finalQuestion) {
+      if (finalQuestion.mediaAsset) {
+        await attachPresignedUrl(finalQuestion.mediaAsset);
       }
-    }
-
-    // Sign row options
-    for (const row of finalQuestion.rowOptions) {
-      if (row.mediaAsset) {
-        await attachPresignedUrl(row.mediaAsset);
+      for (const opt of finalQuestion.options || []) {
+        if (opt.mediaAsset) await attachPresignedUrl(opt.mediaAsset);
       }
-    }
-
-    // Sign column options
-    for (const col of finalQuestion.columnOptions) {
-      if (col.mediaAsset) {
-        await attachPresignedUrl(col.mediaAsset);
+      for (const row of finalQuestion.rowOptions || []) {
+        if (row.mediaAsset) await attachPresignedUrl(row.mediaAsset);
+      }
+      for (const col of finalQuestion.columnOptions || []) {
+        if (col.mediaAsset) await attachPresignedUrl(col.mediaAsset);
       }
     }
 
@@ -667,15 +565,12 @@ export const deleteQuestion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const question = await prisma.question.findUnique({ where: { id } });
+    const question = await Question.findByPk(id);
     if (!question)
       return res.status(404).json({ message: "Question not found" });
 
-    await prisma.option.deleteMany({
-      where: { questionId: id },
-    });
-
-    await prisma.question.delete({ where: { id } });
+    await Option.destroy({ where: { questionId: id } });
+    await Question.destroy({ where: { id } });
 
     res.json({ message: "Question deleted" });
   } catch (error) {

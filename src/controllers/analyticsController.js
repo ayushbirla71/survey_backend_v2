@@ -1,4 +1,10 @@
-import prisma from "../config/db.js";
+import {
+  Survey,
+  Response,
+  Question,
+  ResponseAnswer,
+  SurveyAudience,
+} from "../models/index.js";
 
 /**
  * Get survey-level analytics
@@ -8,26 +14,28 @@ export const getSurveyAnalytics = async (req, res) => {
     const { surveyId } = req.params;
 
     // Check survey exists
-    const survey = await prisma.survey.findUnique({ where: { id: surveyId } });
+    const survey = await Survey.findByPk(surveyId);
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
     // Total responses
-    const totalResponses = await prisma.response.count({ where: { surveyId } });
+    const totalResponses = await Response.count({ where: { surveyId } });
 
     // Total questions
-    const totalQuestions = await prisma.question.count({ where: { surveyId } });
+    const totalQuestions = await Question.count({ where: { surveyId } });
 
     // Optional: calculate average completion rate
-    const responses = await prisma.response.findMany({
+    const responses = await Response.findAll({
       where: { surveyId },
-      include: { response_answers: true },
+      include: [{ model: ResponseAnswer, as: "response_answers" }],
     });
 
     const avgCompletionRate =
-      responses.length === 0
+      responses.length === 0 || totalQuestions === 0
         ? 0
         : responses.reduce(
-            (acc, r) => acc + r.response_answers.length / totalQuestions,
+            (acc, r) =>
+              acc +
+              ((r.response_answers ? r.response_answers.length : 0) / totalQuestions),
             0
           ) / responses.length;
 
@@ -46,23 +54,19 @@ export const getQuestionAnalytics = async (req, res) => {
     const { surveyId, questionId } = req.params;
 
     let questions;
-    if (questionId) {
-      questions = await prisma.question.findMany({
-        where: { id: questionId, surveyId },
-        include: { response_answers: true },
-      });
-    } else {
-      questions = await prisma.question.findMany({
-        where: { surveyId },
-        include: { response_answers: true },
-      });
-    }
+    const whereClause = questionId ? { id: questionId, surveyId } : { surveyId };
+
+    questions = await Question.findAll({
+      where: whereClause,
+      include: [{ model: ResponseAnswer, as: "response_answers" }],
+    });
 
     const analytics = questions.map((q) => {
-      const totalAnswers = q.response_answers.length;
+      const answers = q.response_answers || [];
+      const totalAnswers = answers.length;
 
       const answerDistribution = {};
-      q.response_answers.forEach((a) => {
+      answers.forEach((a) => {
         const key = a.answer_value || "N/A";
         answerDistribution[key] = (answerDistribution[key] || 0) + 1;
       });
@@ -89,11 +93,11 @@ export const getAudienceAnalytics = async (req, res) => {
   try {
     const { surveyId } = req.params;
 
-    const totalAudience = await prisma.surveyAudience.count({
+    const totalAudience = await SurveyAudience.count({
       where: { surveyId },
     });
 
-    const respondedAudience = await prisma.response.count({
+    const respondedAudience = await Response.count({
       where: { surveyId },
     });
 

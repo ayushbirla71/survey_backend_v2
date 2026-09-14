@@ -1,4 +1,12 @@
-import prisma from "../config/db.js";
+import { Op } from "sequelize";
+import {
+  Survey,
+  Question,
+  Option,
+  Response,
+  ResponseAnswer,
+  GridResponseAnswer,
+} from "../models/index.js";
 
 /**
  * Get Survey Results with Filters and Pagination
@@ -18,9 +26,8 @@ export const getSurveyResults = async (req, res) => {
     } = req.query;
 
     // Validate survey exists
-    const survey = await prisma.survey.findUnique({
-      where: { id: surveyId },
-      include: { questions: true },
+    const survey = await Survey.findByPk(surveyId, {
+      include: [{ model: Question, as: "questions" }],
     });
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
@@ -28,31 +35,44 @@ export const getSurveyResults = async (req, res) => {
     const whereClause = { surveyId };
     if (startDate || endDate) {
       whereClause.created_at = {};
-      if (startDate) whereClause.created_at.gte = new Date(startDate);
-      if (endDate) whereClause.created_at.lte = new Date(endDate);
+      if (startDate) whereClause.created_at[Op.gte] = new Date(startDate);
+      if (endDate) whereClause.created_at[Op.lte] = new Date(endDate);
     }
 
     // Calculate pagination
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Get total count
-    const totalResponses = await prisma.response.count({ where: whereClause });
+    const totalResponses = await Response.count({ where: whereClause });
+
+    // Build include for response_answers
+    const responseAnswerInclude = {
+      model: ResponseAnswer,
+      as: "response_answers",
+      include: [
+        {
+          model: Question,
+          as: "question",
+          include: [{ model: Option, as: "options" }],
+        },
+        {
+          model: GridResponseAnswer,
+          as: "grid_answers",
+        },
+      ],
+    };
+    if (questionId) {
+      responseAnswerInclude.where = { questionId };
+      responseAnswerInclude.required = false;
+    }
 
     // Get responses with pagination
-    const aqwQ = await prisma.response.findMany({
+    const responses = await Response.findAll({
       where: whereClause,
-      include: {
-        response_answers: {
-          include: {
-            question: { include: { options: true } },
-            grid_answers: true,
-          },
-          where: questionId ? { questionId } : undefined,
-        },
-      },
-      orderBy: { [sortBy]: sortOrder },
-      skip,
-      take: parseInt(limit),
+      include: [responseAnswerInclude],
+      order: [[sortBy, sortOrder.toUpperCase()]],
+      offset,
+      limit: parseInt(limit),
     });
 
     res.json({
@@ -80,33 +100,41 @@ export const getSurveyResultsSummary = async (req, res) => {
     const { surveyId } = req.params;
 
     // Validate survey exists
-    const survey = await prisma.survey.findUnique({
-      where: { id: surveyId },
-      include: { questions: true },
+    const survey = await Survey.findByPk(surveyId, {
+      include: [{ model: Question, as: "questions" }],
     });
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
     // Total responses
-    const totalResponses = await prisma.response.count({ where: { surveyId } });
+    const totalResponses = await Response.count({ where: { surveyId } });
 
     // Get all responses with answers
-    const responses = await prisma.response.findMany({
+    const responses = await Response.findAll({
       where: { surveyId },
-      include: {
-        response_answers: {
-          include: {
-            question: { include: { options: true } },
-            grid_answers: true,
-          },
+      include: [
+        {
+          model: ResponseAnswer,
+          as: "response_answers",
+          include: [
+            {
+              model: Question,
+              as: "question",
+              include: [{ model: Option, as: "options" }],
+            },
+            {
+              model: GridResponseAnswer,
+              as: "grid_answers",
+            },
+          ],
         },
-      },
+      ],
     });
 
     // Calculate completion rate
     const completionRate =
       responses.length === 0
         ? 0
-        : (responses.filter((r) => r.response_answers.length > 0).length /
+        : (responses.filter((r) => r.response_answers && r.response_answers.length > 0).length /
             responses.length) *
           100;
 
@@ -122,7 +150,7 @@ export const getSurveyResultsSummary = async (req, res) => {
       data: {
         surveyId,
         surveyTitle: survey.title,
-        totalQuestions: survey.questions.length,
+        totalQuestions: survey.questions ? survey.questions.length : 0,
         totalResponses,
         completionRate: completionRate.toFixed(2),
         responseTimeline,
@@ -146,21 +174,30 @@ export const getQuestionResults = async (req, res) => {
     const { surveyId, questionId } = req.params;
 
     // Validate survey and question exist
-    const question = await prisma.question.findUnique({
-      where: { id: questionId },
-      include: { options: true, survey: true },
+    const question = await Question.findByPk(questionId, {
+      include: [
+        { model: Option, as: "options" },
+        { model: Survey, as: "survey" },
+      ],
     });
     if (!question || question.surveyId !== surveyId) {
       return res.status(404).json({ message: "Question not found" });
     }
 
     // Get all answers for this question
-    const answers = await prisma.responseAnswer.findMany({
+    const answers = await ResponseAnswer.findAll({
       where: { questionId },
-      include: {
-        question: { include: { options: true } },
-        grid_answers: true,
-      },
+      include: [
+        {
+          model: Question,
+          as: "question",
+          include: [{ model: Option, as: "options" }],
+        },
+        {
+          model: GridResponseAnswer,
+          as: "grid_answers",
+        },
+      ],
     });
 
     // Calculate answer distribution
@@ -221,32 +258,36 @@ export const exportSurveyResults = async (req, res) => {
     const { format = "json" } = req.query;
 
     // Validate survey exists
-    const survey = await prisma.survey.findUnique({
-      where: { id: surveyId },
-      include: { questions: true },
+    const survey = await Survey.findByPk(surveyId, {
+      include: [{ model: Question, as: "questions" }],
     });
     if (!survey) return res.status(404).json({ message: "Survey not found" });
 
     // Get all responses
-    const responses = await prisma.response.findMany({
+    const responses = await Response.findAll({
       where: { surveyId },
-      include: {
-        response_answers: {
-          include: {
-            question: true,
-            grid_answers: true,
-          },
+      include: [
+        {
+          model: ResponseAnswer,
+          as: "response_answers",
+          include: [
+            { model: Question, as: "question" },
+            { model: GridResponseAnswer, as: "grid_answers" },
+          ],
         },
-      },
+      ],
     });
 
     if (format === "csv") {
       // Generate CSV
       let csv = "Response ID,Submitted At,Question,Answer\n";
       responses.forEach((r) => {
-        r.response_answers.forEach((ans) => {
-          csv += `"${r.id}","${r.created_at}","${ans.question.question_text}","${ans.answer_value || ""}"\n`;
-        });
+        if (r.response_answers) {
+          r.response_answers.forEach((ans) => {
+            const qText = ans.question ? ans.question.question_text : "";
+            csv += `"${r.id}","${r.created_at}","${qText}","${ans.answer_value || ""}"\n`;
+          });
+        }
       });
 
       res.setHeader("Content-Type", "text/csv");
@@ -281,17 +322,18 @@ export const getResponseDetails = async (req, res) => {
   try {
     const { surveyId, responseId } = req.params;
 
-    const response = await prisma.response.findUnique({
-      where: { id: responseId },
-      include: {
-        survey: true,
-        response_answers: {
-          include: {
-            question: { include: { options: true } },
-            grid_answers: true,
-          },
+    const response = await Response.findByPk(responseId, {
+      include: [
+        { model: Survey, as: "survey" },
+        {
+          model: ResponseAnswer,
+          as: "response_answers",
+          include: [
+            { model: Question, as: "question", include: [{ model: Option, as: "options" }] },
+            { model: GridResponseAnswer, as: "grid_answers" },
+          ],
         },
-      },
+      ],
     });
 
     if (!response || response.surveyId !== surveyId) {
@@ -322,34 +364,46 @@ export const getFilteredResponses = async (req, res) => {
         .json({ message: "questionId and answerValue are required" });
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Find responses with specific answer
-    const responseAnswers = await prisma.responseAnswer.findMany({
+    const responseAnswers = await ResponseAnswer.findAll({
       where: {
         questionId,
-        response: { surveyId },
         answer_value: answerValue,
       },
-      include: {
-        response: {
-          include: {
-            response_answers: {
-              include: { question: true },
+      include: [
+        {
+          model: Response,
+          as: "response",
+          where: { surveyId },
+          required: true,
+          include: [
+            {
+              model: ResponseAnswer,
+              as: "response_answers",
+              include: [{ model: Question, as: "question" }],
             },
-          },
+          ],
         },
-      },
-      skip,
-      take: parseInt(limit),
+      ],
+      offset,
+      limit: parseInt(limit),
     });
 
-    const total = await prisma.responseAnswer.count({
+    const total = await ResponseAnswer.count({
       where: {
         questionId,
-        response: { surveyId },
         answer_value: answerValue,
       },
+      include: [
+        {
+          model: Response,
+          as: "response",
+          where: { surveyId },
+          required: true,
+        },
+      ],
     });
 
     res.json({
@@ -369,4 +423,3 @@ export const getFilteredResponses = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-

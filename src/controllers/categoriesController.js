@@ -1,4 +1,4 @@
-import prisma from "../config/db.js";
+import { SurveyCategory, QuestionCategory } from "../models/index.js";
 
 export const createSurveyCategory = async (req, res) => {
   try {
@@ -6,9 +6,7 @@ export const createSurveyCategory = async (req, res) => {
     if (array) {
       const createSurveyCategories = await Promise.all(
         array.map((arr) =>
-          prisma.surveyCategory.create({
-            data: { name: arr },
-          })
+          SurveyCategory.create({ name: arr })
         )
       );
       console.log(
@@ -20,9 +18,7 @@ export const createSurveyCategory = async (req, res) => {
         categories: createSurveyCategories,
       });
     } else {
-      const category = await prisma.surveyCategory.create({
-        data: { name },
-      });
+      const category = await SurveyCategory.create({ name });
 
       return res
         .status(201)
@@ -39,7 +35,7 @@ export const createSurveyCategory = async (req, res) => {
  */
 export const getSurveyCategories = async (req, res) => {
   try {
-    const categories = await prisma.surveyCategory.findMany();
+    const categories = await SurveyCategory.findAll();
 
     res.json({ categories });
   } catch (error) {
@@ -53,9 +49,7 @@ export const createQuestionCategory = async (req, res) => {
     const { type_name } = req.body;
     console.log(">>>> the value of the TYPE_NAME is : ", type_name);
 
-    const createQuestionCategory = await prisma.questionCategory.create({
-      data: { type_name },
-    });
+    const createQuestionCategory = await QuestionCategory.create({ type_name });
     console.log(
       ">>>>> the value of the CREATE QUESTION CATEGORY is : ",
       createQuestionCategory
@@ -78,7 +72,7 @@ export const createQuestionCategory = async (req, res) => {
  */
 export const getQuestionCategories = async (req, res) => {
   try {
-    const categories = await prisma.questionCategory.findMany();
+    const categories = await QuestionCategory.findAll();
 
     res.json({ categories });
   } catch (error) {

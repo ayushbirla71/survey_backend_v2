@@ -1,4 +1,5 @@
-import prisma from "../config/db.js";
+import { AIGeneratedQuestion, Survey, Question } from "../models/index.js";
+import { Op } from "sequelize";
 
 /**
  * Get AI generated questions for a survey
@@ -8,7 +9,7 @@ export const getAIQuestionsBySurvey = async (req, res) => {
     const { surveyId } = req.params;
 
     // Verify survey belongs to user
-    const survey = await prisma.survey.findFirst({
+    const survey = await Survey.findOne({
       where: { id: surveyId, userId: req.user.id, is_deleted: false },
     });
 
@@ -16,9 +17,9 @@ export const getAIQuestionsBySurvey = async (req, res) => {
       return res.status(404).json({ message: "Survey not found or not authorized" });
     }
 
-    const aiQuestions = await prisma.aIGeneratedQuestion.findMany({
+    const aiQuestions = await AIGeneratedQuestion.findAll({
       where: { surveyId },
-      orderBy: { order_index: "asc" },
+      order: [["order_index", "ASC"]],
     });
 
     res.json({ aiQuestions });
@@ -36,7 +37,7 @@ export const createAIQuestion = async (req, res) => {
     const data = req.body;
 
     // Verify survey belongs to user
-    const survey = await prisma.survey.findFirst({
+    const survey = await Survey.findOne({
       where: { id: data.surveyId, userId: req.user.id, is_deleted: false },
     });
 
@@ -44,11 +45,9 @@ export const createAIQuestion = async (req, res) => {
       return res.status(404).json({ message: "Survey not found or not authorized" });
     }
 
-    const aiQuestion = await prisma.aIGeneratedQuestion.create({
-      data: {
-        ...data,
-        surveyId: data.surveyId,
-      },
+    const aiQuestion = await AIGeneratedQuestion.create({
+      ...data,
+      surveyId: data.surveyId,
     });
 
     res.status(201).json({ message: "AI question created", aiQuestion });
@@ -67,24 +66,23 @@ export const updateAIQuestion = async (req, res) => {
     const data = req.body;
 
     // Verify question belongs to user's survey
-    const aiQuestion = await prisma.aIGeneratedQuestion.findFirst({
-      where: { 
-        id,
-        survey: {
-          userId: req.user.id,
-          is_deleted: false
-        }
-      },
+    const aiQuestion = await AIGeneratedQuestion.findOne({
+      where: { id },
+      include: [
+        {
+          model: Survey,
+          as: "survey",
+          where: { userId: req.user.id, is_deleted: false },
+        },
+      ],
     });
 
     if (!aiQuestion) {
       return res.status(404).json({ message: "AI question not found or not authorized" });
     }
 
-    const updatedQuestion = await prisma.aIGeneratedQuestion.update({
-      where: { id },
-      data,
-    });
+    await AIGeneratedQuestion.update(data, { where: { id } });
+    const updatedQuestion = await AIGeneratedQuestion.findByPk(id);
 
     res.json({ message: "AI question updated", aiQuestion: updatedQuestion });
   } catch (error) {
@@ -101,21 +99,22 @@ export const deleteAIQuestion = async (req, res) => {
     const { id } = req.params;
 
     // Verify question belongs to user's survey
-    const aiQuestion = await prisma.aIGeneratedQuestion.findFirst({
-      where: { 
-        id,
-        survey: {
-          userId: req.user.id,
-          is_deleted: false
-        }
-      },
+    const aiQuestion = await AIGeneratedQuestion.findOne({
+      where: { id },
+      include: [
+        {
+          model: Survey,
+          as: "survey",
+          where: { userId: req.user.id, is_deleted: false },
+        },
+      ],
     });
 
     if (!aiQuestion) {
       return res.status(404).json({ message: "AI question not found or not authorized" });
     }
 
-    await prisma.aIGeneratedQuestion.delete({ where: { id } });
+    await AIGeneratedQuestion.destroy({ where: { id } });
 
     res.json({ message: "AI question deleted" });
   } catch (error) {
@@ -133,15 +132,17 @@ export const approveAIQuestions = async (req, res) => {
     const { addToSurvey = false } = req.query;
 
     // Verify all questions belong to user's surveys
-    const aiQuestions = await prisma.aIGeneratedQuestion.findMany({
-      where: { 
-        id: { in: questionIds },
-        survey: {
-          userId: req.user.id,
-          is_deleted: false
-        }
+    const aiQuestions = await AIGeneratedQuestion.findAll({
+      where: {
+        id: { [Op.in]: questionIds },
       },
-      include: { survey: true }
+      include: [
+        {
+          model: Survey,
+          as: "survey",
+          where: { userId: req.user.id, is_deleted: false },
+        },
+      ],
     });
 
     if (aiQuestions.length !== questionIds.length) {
@@ -149,45 +150,40 @@ export const approveAIQuestions = async (req, res) => {
     }
 
     // Update approval status
-    await prisma.aIGeneratedQuestion.updateMany({
-      where: { id: { in: questionIds } },
-      data: { 
+    await AIGeneratedQuestion.update(
+      {
         is_approved: true,
-        is_added_to_survey: addToSurvey === 'true'
+        is_added_to_survey: addToSurvey === "true",
       },
-    });
+      {
+        where: { id: { [Op.in]: questionIds } },
+      }
+    );
 
     // If addToSurvey is true, create actual questions
-    if (addToSurvey === 'true') {
-      const questionsToCreate = aiQuestions.map(aiQ => ({
+    if (addToSurvey === "true") {
+      const questionsToCreate = aiQuestions.map((aiQ) => ({
         surveyId: aiQ.surveyId,
         question_type: aiQ.question_type,
         question_text: aiQ.question_text,
-        options: aiQ.options,
         order_index: aiQ.order_index,
         required: aiQ.required,
       }));
 
-      await prisma.question.createMany({
-        data: questionsToCreate,
-      });
+      await Question.bulkCreate(questionsToCreate);
 
       // Update survey question count
       for (const aiQ of aiQuestions) {
-        await prisma.survey.update({
+        await Survey.increment("no_of_questions", {
+          by: 1,
           where: { id: aiQ.surveyId },
-          data: {
-            no_of_questions: {
-              increment: 1
-            }
-          }
         });
       }
     }
 
-    res.json({ 
-      message: `${questionIds.length} questions approved${addToSurvey === 'true' ? ' and added to survey' : ''}`,
-      approvedCount: questionIds.length
+    res.json({
+      message: `${questionIds.length} questions approved${addToSurvey === "true" ? " and added to survey" : ""}`,
+      approvedCount: questionIds.length,
     });
   } catch (error) {
     console.error("Approve AI Questions Error:", error);
@@ -204,7 +200,7 @@ export const addAIQuestionsToSurvey = async (req, res) => {
     const { questionIds } = req.body;
 
     // Verify survey belongs to user
-    const survey = await prisma.survey.findFirst({
+    const survey = await Survey.findOne({
       where: { id: surveyId, userId: req.user.id, is_deleted: false },
     });
 
@@ -213,12 +209,12 @@ export const addAIQuestionsToSurvey = async (req, res) => {
     }
 
     // Get approved AI questions
-    const aiQuestions = await prisma.aIGeneratedQuestion.findMany({
-      where: { 
-        id: { in: questionIds },
+    const aiQuestions = await AIGeneratedQuestion.findAll({
+      where: {
+        id: { [Op.in]: questionIds },
         surveyId,
         is_approved: true,
-        is_added_to_survey: false
+        is_added_to_survey: false,
       },
     });
 
@@ -227,38 +223,31 @@ export const addAIQuestionsToSurvey = async (req, res) => {
     }
 
     // Create actual questions
-    const questionsToCreate = aiQuestions.map(aiQ => ({
+    const questionsToCreate = aiQuestions.map((aiQ) => ({
       surveyId: aiQ.surveyId,
       question_type: aiQ.question_type,
       question_text: aiQ.question_text,
-      options: aiQ.options,
       order_index: aiQ.order_index,
       required: aiQ.required,
     }));
 
-    await prisma.question.createMany({
-      data: questionsToCreate,
-    });
+    await Question.bulkCreate(questionsToCreate);
 
     // Mark AI questions as added
-    await prisma.aIGeneratedQuestion.updateMany({
-      where: { id: { in: questionIds } },
-      data: { is_added_to_survey: true },
-    });
+    await AIGeneratedQuestion.update(
+      { is_added_to_survey: true },
+      { where: { id: { [Op.in]: questionIds } } }
+    );
 
     // Update survey question count
-    await prisma.survey.update({
+    await Survey.increment("no_of_questions", {
+      by: aiQuestions.length,
       where: { id: surveyId },
-      data: {
-        no_of_questions: {
-          increment: aiQuestions.length
-        }
-      }
     });
 
-    res.json({ 
+    res.json({
       message: `${aiQuestions.length} questions added to survey`,
-      addedCount: aiQuestions.length
+      addedCount: aiQuestions.length,
     });
   } catch (error) {
     console.error("Add AI Questions to Survey Error:", error);

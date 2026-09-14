@@ -1,5 +1,16 @@
 import axios from "axios";
-import prisma from "../config/db.js";
+import {
+  Vendor,
+  VendorApiConfig,
+  VendorQuestionLibrary,
+  VendorQuestionCategory,
+  VendorQuestionOption,
+  ScreeningQuestionDefinition,
+  ScreenQuestionOption,
+  SurveyVendorConfig,
+  Survey,
+  ShareToken,
+} from "../models/index.js";
 import {
   buildQuotaConditions,
   buildVendorTargetPayload,
@@ -20,45 +31,43 @@ export const createVendor = async (req, res) => {
       return res.status(400).json({ message: "key and name are required" });
     }
 
-    const checkVendorExists = await prisma.vendor.findUnique({
+    const checkVendorExists = await Vendor.findOne({
       where: { key },
     });
     console.log(
       ">>>>> the value of the CHECK VENDOR exists is : ",
-      checkVendorExists,
+      checkVendorExists
     );
     if (checkVendorExists)
       return res
         .status(400)
         .send({ message: "Vendor already exists with this KEY." });
 
-    const vendor = await prisma.vendor.create({
-      data: { key, name },
-    });
+    const vendor = await Vendor.create({ key, name });
     console.log(">>>>> the value of the VENDOR is : ", vendor);
 
     if (apiConfig) {
       const { api_version, base_url, auth_type, credentials } = apiConfig;
-      const config = await prisma.vendorApiConfig.create({
-        data: {
-          api_version,
-          base_url,
-          auth_type,
-          credentials,
-          vendorId: vendor.id,
-          is_default: true,
-        },
+      const config = await VendorApiConfig.create({
+        api_version,
+        base_url,
+        auth_type,
+        credentials,
+        vendorId: vendor.id,
+        is_default: true,
       });
       console.log(">>>>> the value of the CONFIG is : ", config);
     }
 
-    const vendorWithConfig = await prisma.vendor.findUnique({
-      where: { id: vendor.id },
-      include: { api_configs: true, question_library: true },
+    const vendorWithConfig = await Vendor.findByPk(vendor.id, {
+      include: [
+        { model: VendorApiConfig, as: "api_configs" },
+        { model: VendorQuestionLibrary, as: "question_library" },
+      ],
     });
     console.log(
       ">>>> the value of the VENDOR WITH CONFIG is : ",
-      vendorWithConfig,
+      vendorWithConfig
     );
 
     return res
@@ -75,8 +84,11 @@ export const createVendor = async (req, res) => {
  */
 export const getVendors = async (req, res) => {
   try {
-    const vendors = await prisma.vendor.findMany({
-      include: { api_configs: true, question_library: true },
+    const vendors = await Vendor.findAll({
+      include: [
+        { model: VendorApiConfig, as: "api_configs" },
+        { model: VendorQuestionLibrary, as: "question_library" },
+      ],
     });
     return res.json({
       message: "Vendors retrieved successfully",
@@ -91,9 +103,11 @@ export const getVendors = async (req, res) => {
 export const getVendorById = async (req, res) => {
   try {
     const { id } = req.params;
-    const vendor = await prisma.vendor.findUnique({
-      where: { id },
-      include: { api_configs: true, question_library: true },
+    const vendor = await Vendor.findByPk(id, {
+      include: [
+        { model: VendorApiConfig, as: "api_configs" },
+        { model: VendorQuestionLibrary, as: "question_library" },
+      ],
     });
     return res.json({ message: "Vendor retrieved successfully", data: vendor });
   } catch (error) {
@@ -110,10 +124,16 @@ export const updateVendor = async (req, res) => {
     const { id } = req.params;
     const { name, is_active } = req.body;
 
-    const vendor = await prisma.vendor.update({
-      where: { id },
-      data: { name, is_active },
-      include: { api_configs: true, question_library: true },
+    const vendorItem = await Vendor.findByPk(id);
+    if (!vendorItem) return res.status(404).json({ message: "Vendor not found" });
+
+    await vendorItem.update({ name, is_active });
+
+    const vendor = await Vendor.findByPk(id, {
+      include: [
+        { model: VendorApiConfig, as: "api_configs" },
+        { model: VendorQuestionLibrary, as: "question_library" },
+      ],
     });
 
     return res.json({ message: "Vendor updated successfully", data: vendor });
@@ -131,10 +151,16 @@ export const toggleVendor = async (req, res) => {
     const { id } = req.params;
     const { is_active } = req.body;
 
-    const vendor = await prisma.vendor.update({
-      where: { id },
-      data: { is_active },
-      include: { api_configs: true, question_library: true },
+    const vendorItem = await Vendor.findByPk(id);
+    if (!vendorItem) return res.status(404).json({ message: "Vendor not found" });
+
+    await vendorItem.update({ is_active });
+
+    const vendor = await Vendor.findByPk(id, {
+      include: [
+        { model: VendorApiConfig, as: "api_configs" },
+        { model: VendorQuestionLibrary, as: "question_library" },
+      ],
     });
     console.log(">>>>> the value of the TOGGLED VENDOR is : ", vendor);
 
@@ -153,25 +179,23 @@ export const toggleVendor = async (req, res) => {
 export const createApiConfig = async (req, res) => {
   try {
     const { vendorId } = req.params;
-    const { api_version, base_url, auth_type, credentials } = req.body;
+    const { api_version, base_url, auth_type, credentials, is_default } = req.body;
 
     if (is_default) {
       // Ensure only ONE default per vendor
-      await prisma.vendorApiConfig.updateMany({
-        where: { vendorId },
-        data: { is_default: false },
-      });
+      await VendorApiConfig.update(
+        { is_default: false },
+        { where: { vendorId } }
+      );
     }
 
-    const config = await prisma.vendorApiConfig.create({
-      data: {
-        vendorId,
-        api_version,
-        base_url,
-        auth_type,
-        credentials,
-        is_default: !!is_default,
-      },
+    const config = await VendorApiConfig.create({
+      vendorId,
+      api_version,
+      base_url,
+      auth_type,
+      credentials,
+      is_default: !!is_default,
     });
 
     return res
@@ -190,7 +214,7 @@ export const getAPIConfigsByVendor = async (req, res) => {
   try {
     const { vendorId } = req.params;
 
-    const configs = await prisma.vendorApiConfig.findMany({
+    const configs = await VendorApiConfig.findAll({
       where: { vendorId },
     });
 
@@ -213,20 +237,20 @@ export const updateAPIConfig = async (req, res) => {
     const { api_version, base_url, auth_type, credentials, is_default } =
       req.body;
 
-    const config = await prisma.vendorApiConfig.update({
-      where: { id },
-      data: {
-        api_version,
-        base_url,
-        auth_type,
-        credentials,
-        is_default: !!is_default,
-      },
+    const configItem = await VendorApiConfig.findByPk(id);
+    if (!configItem) return res.status(404).json({ message: "Config not found" });
+
+    await configItem.update({
+      api_version,
+      base_url,
+      auth_type,
+      credentials,
+      is_default: !!is_default,
     });
 
     return res.json({
       message: "API Config updated successfully",
-      data: config,
+      data: configItem,
     });
   } catch (error) {
     console.error("Update API Config Error:", error);
@@ -241,25 +265,22 @@ export const setDefaultAPIConfig = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const config = await prisma.vendorApiConfig.findUnique({ where: { id } });
+    const config = await VendorApiConfig.findByPk(id);
 
     if (!config) {
       return res.status(404).json({ message: "Config not found" });
     }
 
-    await prisma.vendorApiConfig.updateMany({
-      where: { vendorId: config.vendorId },
-      data: { is_default: false },
-    });
+    await VendorApiConfig.update(
+      { is_default: false },
+      { where: { vendorId: config.vendorId } }
+    );
 
-    const updated = await prisma.vendorApiConfig.update({
-      where: { id },
-      data: { is_default: true },
-    });
+    await config.update({ is_default: true });
 
     return res.json({
       message: "API Config set as default successfully",
-      data: updated,
+      data: config,
     });
   } catch (error) {
     console.error("Set Default API Config Error:", error);
@@ -278,37 +299,39 @@ export const getSelectedVendorQuestions = async (req, res) => {
     console.log(
       ">>>>> the value of the COUNTRY CODE and LANGUAGE is : ",
       countryCode,
-      language,
+      language
     );
 
-    const questions = await prisma.vendorQuestionLibrary.findMany({
+    let questions = await VendorQuestionLibrary.findAll({
       where: { vendorId, country_code: countryCode, language },
-      include: { category: true, options: true },
+      include: [
+        { model: VendorQuestionCategory, as: "category" },
+        { model: VendorQuestionOption, as: "options" },
+      ],
     });
-    // console.log(">>>>> the value of the QUESTIONS is : ", questions);
 
     if (questions.length === 0) {
-      const apiConfigId = await prisma.vendorApiConfig.findFirst({
+      const apiConfig = await VendorApiConfig.findOne({
         where: { vendorId, is_default: true },
-        select: { id: true },
+        attributes: ["id"],
       });
-      // console.log(">>>>> the value of the API CONFIG ID is : ", apiConfigId);
 
-      const fetchQuestionsFromVendor = await ingestInnovateMRQuestions({
-        vendorId,
-        apiConfigId: apiConfigId.id,
-        countryCode,
-        language,
-      });
-      // console.log(
-      //   ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
-      //   fetchQuestionsFromVendor
-      // );
+      if (apiConfig) {
+        await ingestInnovateMRQuestions({
+          vendorId,
+          apiConfigId: apiConfig.id,
+          countryCode,
+          language,
+        });
 
-      const questions = await prisma.vendorQuestionLibrary.findMany({
-        where: { vendorId, country_code: countryCode, language },
-        include: { category: true, options: true },
-      });
+        questions = await VendorQuestionLibrary.findAll({
+          where: { vendorId, country_code: countryCode, language },
+          include: [
+            { model: VendorQuestionCategory, as: "category" },
+            { model: VendorQuestionOption, as: "options" },
+          ],
+        });
+      }
 
       return res.json({
         message: "Vendor Questions retrieved successfully",
@@ -339,7 +362,7 @@ export const getSelectedVendorQuestions_v2 = async (req, res) => {
       countryCode,
       language,
       source,
-      vendorId,
+      vendorId
     );
 
     const findQuestionsWhere = {
@@ -351,35 +374,32 @@ export const getSelectedVendorQuestions_v2 = async (req, res) => {
       findQuestionsWhere.vendorId = vendorId;
     }
 
-    const questions = await prisma.screeningQuestionDefinition.findMany({
+    let questions = await ScreeningQuestionDefinition.findAll({
       where: findQuestionsWhere,
-      include: { options: true },
+      include: [{ model: ScreenQuestionOption, as: "options" }],
     });
     console.log(">>>>> the value of the QUESTIONS is : ", questions);
 
     if (questions.length === 0) {
       if (source === "VENDOR") {
-        const apiConfigId = await prisma.vendorApiConfig.findFirst({
+        const apiConfig = await VendorApiConfig.findOne({
           where: { vendorId, is_default: true },
-          select: { id: true },
+          attributes: ["id"],
         });
-        // console.log(">>>>> the value of the API CONFIG ID is : ", apiConfigId);
 
-        const fetchQuestionsFromVendor = await ingestInnovateMRQuestions_v2({
-          vendorId,
-          apiConfigId: apiConfigId.id,
-          countryCode,
-          language,
-        });
-        // console.log(
-        //   ">>>>> the value of the FETCHED QUESTIONS FROM VENDOR is : ",
-        //   fetchQuestionsFromVendor
-        // );
+        if (apiConfig) {
+          await ingestInnovateMRQuestions_v2({
+            vendorId,
+            apiConfigId: apiConfig.id,
+            countryCode,
+            language,
+          });
 
-        const questions = await prisma.screeningQuestionDefinition.findMany({
-          where: { vendorId, country_code: countryCode, language },
-          include: { options: true },
-        });
+          questions = await ScreeningQuestionDefinition.findAll({
+            where: { vendorId, country_code: countryCode, language },
+            include: [{ model: ScreenQuestionOption, as: "options" }],
+          });
+        }
 
         return res.json({
           message: "Vendor Questions retrieved successfully",
@@ -414,49 +434,35 @@ const distributeOverInnovateMR = async ({
   try {
     console.log(
       ">>>> the value of the SURVEY DETAILS in distributeOverInnovateMR is : ",
-      surveyDetails,
+      surveyDetails
     );
     console.log(
       ">>>> the value of the VENDOR DETAILS in distributeOverInnovateMR is : ",
-      vendorDetails,
+      vendorDetails
     );
     console.log(
       ">>>> the value of the TOTAL TARGET in distributeOverInnovateMR is : ",
-      totalTarget,
+      totalTarget
     );
     console.log(
       ">>>> the value of the DISTRIBUTION in distributeOverInnovateMR is : ",
-      distribution,
+      distribution
     );
 
-    // const vendorTargetPayload = await buildVendorTargetPayload(distribution);
-    // console.log(
-    //   ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
-    //   vendorTargetPayload
-    // );
-
-    // const conditions = buildQuotaConditions(vendorTargetPayload);
-    // console.log(
-    //   ">>>> the value of the CONDITIONS in distributeOverInnovateMR is : ",
-    //   conditions
-    // );
-
-    if (vendorDetails.api_configs.length === 0) {
-      throw new Error({ message: "No active API config found" });
+    if (!vendorDetails.api_configs || vendorDetails.api_configs.length === 0) {
+      throw new Error("No active API config found");
     }
 
     const apiConfig =
       vendorDetails.api_configs[vendorDetails.api_configs.length - 1];
     const { id: apiConfigId, base_url, credentials } = apiConfig;
 
-    const isSurveyVendorConfigExist = await prisma.surveyVendorConfig.findFirst(
-      {
-        where: { surveyId: surveyDetails.id, vendorId: vendorDetails.id },
-      },
-    );
+    const isSurveyVendorConfigExist = await SurveyVendorConfig.findOne({
+      where: { surveyId: surveyDetails.id, vendorId: vendorDetails.id },
+    });
     console.log(
       ">>>> the value of the isSurveyVendorConfigExist in distributeOverInnovateMR is : ",
-      isSurveyVendorConfigExist,
+      isSurveyVendorConfigExist
     );
 
     let job_id = isSurveyVendorConfigExist
@@ -464,7 +470,7 @@ const distributeOverInnovateMR = async ({
       : null;
     console.log(
       ">>>> the value of the JOB ID in distributeOverInnovateMR is : ",
-      job_id,
+      job_id
     );
 
     let surveyVendorConfigId = isSurveyVendorConfigExist
@@ -472,7 +478,7 @@ const distributeOverInnovateMR = async ({
       : null;
     console.log(
       ">>>> the value of the surveyVendorConfigId in distributeOverInnovateMR is : ",
-      surveyVendorConfigId,
+      surveyVendorConfigId
     );
 
     if (!job_id) {
@@ -487,36 +493,34 @@ const distributeOverInnovateMR = async ({
           headers: {
             "x-access-token": `${credentials.token}`,
           },
-        },
+        }
       );
       console.log(
         ">>>>> the value of the createJobResponse from INNOVATE MR is : ",
-        createJobResponse.data,
+        createJobResponse.data
       );
       const validatedCreateJobResponse = validateInnovateMRResponse(
         createJobResponse,
-        "Create Job",
+        "Create Job"
       );
       console.log(
         ">>>>> the value of the validatedCreateJobResponse from INNOVATE MR is : ",
-        validatedCreateJobResponse,
+        validatedCreateJobResponse
       );
 
       job_id = createJobResponse.data?.job?.Id;
       console.log(">>>>> the value of the JOB ID is : ", job_id);
 
-      const createSurveyVendorConfig = await prisma.surveyVendorConfig.create({
-        data: {
-          surveyId: surveyDetails.id,
-          vendorId: vendorDetails.id,
-          api_config_id: apiConfigId,
-          vendor_survey_id: JSON.stringify(job_id),
-          status: "CREATED",
-        },
+      const createSurveyVendorConfig = await SurveyVendorConfig.create({
+        surveyId: surveyDetails.id,
+        vendorId: vendorDetails.id,
+        api_config_id: apiConfigId,
+        vendor_survey_id: JSON.stringify(job_id),
+        status: "CREATED",
       });
       console.log(
         ">>>>> the value of the createSurveyVendorConfig is : ",
-        createSurveyVendorConfig,
+        createSurveyVendorConfig
       );
 
       surveyVendorConfigId = createSurveyVendorConfig.id;
@@ -531,44 +535,44 @@ const distributeOverInnovateMR = async ({
         LengthOfInterview: 2,
         LiveSurveyUrl:
           process.env.BACKEND_URL +
-          `/webhook/innovate/${surveyDetails.id}?tk=[%%token%%]&pid=[%%pid%%]`, // TODO: Add the live survey url
+          `/webhook/innovate/${surveyDetails.id}?tk=[%%token%%]&pid=[%%pid%%]`,
         Target: { Country: "India", Languages: "ENGLISH" },
       },
       {
         headers: {
           "x-access-token": `${credentials.token}`,
         },
-      },
+      }
     );
     console.log(
       ">>>>> the value of the createGroupResponse from INNOVATE MR is : ",
-      createGroupResponse.data,
+      createGroupResponse.data
     );
     const validatedCreateGroupResponse = validateInnovateMRResponse(
       createGroupResponse,
-      "Create Group",
+      "Create Group"
     );
     console.log(
       ">>>>> the value of the validatedCreateGroupResponse from INNOVATE MR is : ",
-      validatedCreateGroupResponse,
+      validatedCreateGroupResponse
     );
 
     const group_id = createGroupResponse.data?.group?.Id;
     console.log(">>>>> the value of the GROUP ID is : ", group_id);
 
-    const updateSurveyVendorConfig = await prisma.surveyVendorConfig.update({
-      where: { id: surveyVendorConfigId },
-      data: { vendor_group_id: JSON.stringify(group_id) },
+    const surveyVendorConfigItem = await SurveyVendorConfig.findByPk(surveyVendorConfigId);
+    const updateSurveyVendorConfig = await surveyVendorConfigItem.update({
+      vendor_group_id: JSON.stringify(group_id),
     });
     console.log(
       ">>>>> the value of the updateSurveyVendorConfig is : ",
-      updateSurveyVendorConfig,
+      updateSurveyVendorConfig
     );
 
     const vendorTargetPayload = await buildVendorTargetPayload(distribution);
     console.log(
       ">>>> the value of the VENDOR TARGET PAYLOAD in distributeOverInnovateMR is : ",
-      vendorTargetPayload,
+      vendorTargetPayload
     );
 
     for (const target of vendorTargetPayload) {
@@ -586,19 +590,19 @@ const distributeOverInnovateMR = async ({
               "x-access-token": `${credentials.token}`,
             },
             timeout: 10000,
-          },
+          }
         );
         console.log(
           ">>>> the value of the createVendorTargetResponse is : ",
-          createVendorTargetResponse.data,
+          createVendorTargetResponse.data
         );
         const validatedCreateVendorTargetResponse = validateInnovateMRResponse(
           createVendorTargetResponse,
-          "Create Vendor Target",
+          "Create Vendor Target"
         );
         console.log(
           ">>>>> the value of the validatedCreateVendorTargetResponse from INNOVATE MR is : ",
-          validatedCreateVendorTargetResponse,
+          validatedCreateVendorTargetResponse
         );
       } catch (error) {
         console.error("Distribute Over InnovateMR Error:", error);
@@ -607,19 +611,18 @@ const distributeOverInnovateMR = async ({
     }
 
     const updateSurveyVendorConfigWithTarget =
-      await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { is_target_added: true },
+      await surveyVendorConfigItem.update({
+        is_target_added: true,
       });
     console.log(
       ">>>>> the value of the updateSurveyVendorConfigWithTarget is : ",
-      updateSurveyVendorConfigWithTarget,
+      updateSurveyVendorConfigWithTarget
     );
 
     const conditions = buildQuotaConditions(vendorTargetPayload);
     console.log(
       ">>>> the value of the CONDITIONS in distributeOverInnovateMR is : ",
-      conditions,
+      conditions
     );
 
     const addQuotaToGroupResponse = await axios.post(
@@ -637,32 +640,31 @@ const distributeOverInnovateMR = async ({
           "x-access-token": `${credentials.token}`,
         },
         timeout: 10000,
-      },
+      }
     );
     console.log(
       ">>>>> the value of the addQuotaToGroupResponse is : ",
-      addQuotaToGroupResponse.data,
+      addQuotaToGroupResponse.data
     );
     const validatedAddQuotaToGroupResponse = validateInnovateMRResponse(
       addQuotaToGroupResponse,
-      "Add Quota to Group",
+      "Add Quota to Group"
     );
     console.log(
       ">>>>> the value of the validatedAddQuotaToGroupResponse from INNOVATE MR is : ",
-      validatedAddQuotaToGroupResponse,
+      validatedAddQuotaToGroupResponse
     );
 
     const quota_id = addQuotaToGroupResponse.data?.Quota?.Id;
     console.log(">>>>> the value of the QUOTA ID is : ", quota_id);
 
     const updateSurveyVendorConfigWithQuota =
-      await prisma.surveyVendorConfig.update({
-        where: { id: surveyVendorConfigId },
-        data: { vendor_quota_id: JSON.stringify(quota_id) },
+      await surveyVendorConfigItem.update({
+        vendor_quota_id: JSON.stringify(quota_id),
       });
     console.log(
       ">>>>> the value of the updateSurveyVendorConfigWithQuota is : ",
-      updateSurveyVendorConfigWithQuota,
+      updateSurveyVendorConfigWithQuota
     );
 
     return true;
@@ -677,18 +679,20 @@ export const createVendorDistribution = async (req, res) => {
     const { vendorId } = req.params;
     const { surveyId, totalTarget, distribution } = req.body;
 
-    const surveyDetails = await prisma.survey.findUnique({
-      where: { id: surveyId },
-    });
+    const surveyDetails = await Survey.findByPk(surveyId);
     if (!surveyDetails) {
       return res.status(404).json({ message: "Survey not found" });
     }
 
-    const vendorDetails = await prisma.vendor.findUnique({
-      where: { id: vendorId },
-      include: {
-        api_configs: { where: { is_default: true, is_active: true } },
-      },
+    const vendorDetails = await Vendor.findByPk(vendorId, {
+      include: [
+        {
+          model: VendorApiConfig,
+          as: "api_configs",
+          where: { is_default: true, is_active: true },
+          required: false,
+        },
+      ],
     });
     if (!vendorDetails) {
       return res.status(404).json({ message: "Vendor not found" });
@@ -702,7 +706,7 @@ export const createVendorDistribution = async (req, res) => {
     });
     console.log(
       ">>>>> the value of the DISTRIBUTED RESPONSE OVER MR is : ",
-      distributedResponseOverMR,
+      distributedResponseOverMR
     );
 
     return res.json({
@@ -725,16 +729,16 @@ export const updateVendorJobStatus = async (req, res) => {
       ">>>>> the value of the surveyId and vendorId and status is : ",
       surveyId,
       vendorId,
-      status,
+      status
     );
 
-    const surveyVendorConfigData = await prisma.surveyVendorConfig.findUnique({
+    const surveyVendorConfigData = await SurveyVendorConfig.findOne({
       where: { surveyId, vendorId },
-      include: { api_config: true },
+      include: [{ model: VendorApiConfig, as: "api_config" }],
     });
     console.log(
       ">>>>> the value of the surveyVendorConfigData is : ",
-      surveyVendorConfigData,
+      surveyVendorConfigData
     );
     if (!surveyVendorConfigData) {
       return res
@@ -759,18 +763,15 @@ export const updateVendorJobStatus = async (req, res) => {
       status,
     });
 
-    const surveyVendorConfig = await prisma.surveyVendorConfig.update({
-      where: { surveyId, vendorId },
-      data: { status: "LIVE" },
-    });
+    await surveyVendorConfigData.update({ status: "LIVE" });
     console.log(
       ">>>>> the value of the surveyVendorConfig is : ",
-      surveyVendorConfig,
+      surveyVendorConfigData
     );
 
     return res.json({
       message: "Vendor Job Status updated successfully",
-      data: surveyVendorConfig,
+      data: surveyVendorConfigData,
     });
   } catch (error) {
     console.error("Update Vendor Job Status Error:", error);
@@ -784,7 +785,7 @@ export const redirectVendor = async (req, res) => {
     console.log(">>>>> the value of the shareTokenId is : ", shareTokenId);
     console.log(">>>>> the value of the isCompleted is : ", isCompleted);
 
-    const shareToken = await prisma.shareToken.findFirst({
+    const shareToken = await ShareToken.findOne({
       where: { token_hash: shareTokenId, isTest: false },
     });
     console.log(">>>>> the value of the shareToken is : ", shareToken);
@@ -802,7 +803,7 @@ export const redirectVendor = async (req, res) => {
     const redirectResponse = await axios.get(redirectUrl);
     console.log(
       ">>>>> the value of the redirectResponse is : ",
-      redirectResponse.data,
+      redirectResponse.data
     );
 
     return res.json({ message: "Redirecting to Vendor", data: redirectUrl });
