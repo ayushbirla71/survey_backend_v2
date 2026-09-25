@@ -6,7 +6,7 @@ import {
   generateSurveyQuestionsWithCategory,
 } from "../utils/openaiService.js";
 import { createQuestionsWithOptions } from "./questionController.js";
-import { generatePresignedUrl } from "../utils/uploadToS3.js";
+import { getMediaUrl } from "../storage/storageService.js";
 
 /**
  * Create a new survey
@@ -330,10 +330,7 @@ export const getSurveyById = async (req, res) => {
     // Helper to attach presigned URL
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
-      mediaAsset.url = await generatePresignedUrl(
-        process.env.AWS_BUCKET_NAME,
-        mediaAsset.url,
-      );
+      mediaAsset.url = await getMediaUrl(mediaAsset.url);
       return mediaAsset;
     };
 

@@ -1,5 +1,5 @@
 import prisma from "../config/db.js";
-import { generatePresignedUrl } from "../utils/uploadToS3.js";
+import { getMediaUrl } from "../storage/storageService.js";
 import { markTokenUsed } from "./shareController.js";
 
 /**
@@ -159,7 +159,7 @@ const signMediaAsset = async (mediaAsset) => {
 
   if (!bucket || !key) return mediaAsset;
 
-  mediaAsset.url = await generatePresignedUrl(bucket, key);
+  mediaAsset.url = await getMediaUrl(key);
   return mediaAsset;
 };
 

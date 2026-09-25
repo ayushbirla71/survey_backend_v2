@@ -1,9 +1,9 @@
 import prisma from "../config/db.js";
 import {
-  deleteFromS3,
-  generatePresignedUrl,
-  uploadToS3,
-} from "../utils/uploadToS3.js";
+  deleteMediaFunction,
+  getMediaUrl,
+  uploadMediaFunction,
+} from "../storage/storageService.js";
 
 const detectQuestionTypeFromFile = (file) => {
   console.log(">>>>> the  value of the FILE is : ", file);
@@ -21,8 +21,7 @@ export const uploadMedia = async (req, res) => {
     if (!file) return res.status(400).json({ message: "No file provided" });
 
     // for public access collection
-    // const fileUrl = await uploadToS3(file, "survey96/survey_media");
-    const fileUrl = await uploadToS3(file, "survey_media");
+    const fileUrl = await uploadMediaFunction(file, "survey_media");
     console.log(">>>>> the value of the FILE URL is : ", fileUrl);
 
     const meta = { ...file };
@@ -37,10 +36,7 @@ export const uploadMedia = async (req, res) => {
       },
     });
 
-    media.url = await generatePresignedUrl(
-      process.env.AWS_BUCKET_NAME,
-      media.url
-    );
+    media.url = await getMediaUrl(media.url);
 
     res.json({ message: "Media uploaded", media });
   } catch (error) {
@@ -98,7 +94,7 @@ export const deleteMedia = async (req, res) => {
 
     // External side-effect LAST
     try {
-      await deleteFromS3(s3Key);
+      await deleteMediaFunction(s3Key);
     } catch (s3Err) {
       console.error("⚠️ S3 delete failed:", s3Err);
       // DB is already consistent — DO NOT rollback

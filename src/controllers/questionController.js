@@ -1,12 +1,12 @@
 import prisma from "../config/db.js";
-import { generatePresignedUrl } from "../utils/uploadToS3.js";
+import { getMediaUrl } from "../storage/storageService.js";
 
 export const createQuestionsWithOptions = async (
   questionData,
   options,
   categoryId,
   rowOptions,
-  columnOptions
+  columnOptions,
 ) => {
   try {
     // console.log(
@@ -143,10 +143,7 @@ export const createQuestionsWithOptions = async (
 const signMedia = async (mediaAsset) => {
   if (!mediaAsset) return null;
 
-  mediaAsset.url = await generatePresignedUrl(
-    process.env.AWS_BUCKET_NAME,
-    mediaAsset.url
-  );
+  mediaAsset.url = await getMediaUrl(mediaAsset.url);
 
   return mediaAsset;
 };
@@ -213,7 +210,7 @@ export const createQuestion = async (req, res) => {
       options,
       categoryId,
       rowOptions,
-      columnOptions
+      columnOptions,
     );
     console.log(">>>>> the value of the QUESTION is : ", question);
 
@@ -232,10 +229,7 @@ export const createQuestion = async (req, res) => {
     // Same helper as before
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
-      mediaAsset.url = await generatePresignedUrl(
-        process.env.AWS_BUCKET_NAME,
-        mediaAsset.url
-      );
+      mediaAsset.url = await getMediaUrl(mediaAsset.url);
       return mediaAsset;
     };
 
@@ -303,10 +297,7 @@ export const getQuestionsBySurvey = async (req, res) => {
     // Same helper as before
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
-      mediaAsset.url = await generatePresignedUrl(
-        process.env.AWS_BUCKET_NAME,
-        mediaAsset.url
-      );
+      mediaAsset.url = await getMediaUrl(mediaAsset.url);
       return mediaAsset;
     };
 
@@ -614,10 +605,7 @@ export const updateQuestion = async (req, res) => {
     // Same helper as before
     const attachPresignedUrl = async (mediaAsset) => {
       if (!mediaAsset) return null;
-      mediaAsset.url = await generatePresignedUrl(
-        process.env.AWS_BUCKET_NAME,
-        mediaAsset.url
-      );
+      mediaAsset.url = await getMediaUrl(mediaAsset.url);
       return mediaAsset;
     };
 
