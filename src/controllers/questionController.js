@@ -36,10 +36,14 @@ export const createQuestionsWithOptions = async (
       case "dropdown":
       case "ranking":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
             mediaId: opt.mediaId || null,
+            nextQuestionId: opt.nextQuestionId || opt.next_question_id || null,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
@@ -61,6 +65,8 @@ export const createQuestionsWithOptions = async (
             fromLabel: scale.fromLabel,
             toLabel: scale.toLabel,
             icon: scale.icon,
+            option_id: scale.option_id || scale.optionId || null,
+            order_index: scale.order_index ?? scale.orderIndex ?? 0,
           });
         }
         break;
@@ -68,19 +74,31 @@ export const createQuestionsWithOptions = async (
       case "multi-choice grid":
       case "checkbox grid":
         if (rowOptions && rowOptions.length > 0) {
-          const rowOptionRecords = rowOptions.map((opt) => ({
+          const rowOptionRecords = rowOptions.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
             rowQuestionOptionId: question.id,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `row_opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
           optionRecords.push(...rowOptionRecords);
         }
 
         if (columnOptions && columnOptions.length > 0) {
-          const columnOptionRecords = columnOptions.map((opt) => ({
+          const columnOptionRecords = columnOptions.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
             columnQuestionOptionId: question.id,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `col_opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
           optionRecords.push(...columnOptionRecords);
         }
@@ -88,10 +106,12 @@ export const createQuestionsWithOptions = async (
 
       case "file upload":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
             mediaId: opt.mediaId || null,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
@@ -99,18 +119,27 @@ export const createQuestionsWithOptions = async (
       case "date":
       case "time":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
 
       default:
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: question.id,
+            nextQuestionId: opt.nextQuestionId || opt.next_question_id || null,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
@@ -432,10 +461,17 @@ export const updateQuestion = async (req, res) => {
       case "dropdown":
       case "ranking":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
             mediaId: opt.mediaId || null,
+            nextQuestionId: opt.nextQuestionId || opt.next_question_id || null,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
@@ -457,6 +493,8 @@ export const updateQuestion = async (req, res) => {
             fromLabel: scale.fromLabel,
             toLabel: scale.toLabel,
             icon: scale.icon,
+            option_id: scale.option_id || scale.optionId || null,
+            order_index: scale.order_index ?? scale.orderIndex ?? 0,
           });
         }
         break;
@@ -464,19 +502,31 @@ export const updateQuestion = async (req, res) => {
       case "multi-choice grid":
       case "checkbox grid":
         if (rowOptions && rowOptions.length > 0) {
-          const rowOptionRecords = rowOptions.map((opt) => ({
+          const rowOptionRecords = rowOptions.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
             rowQuestionOptionId: id,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `row_opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
           optionRecords.push(...rowOptionRecords);
         }
 
         if (columnOptions && columnOptions.length > 0) {
-          const columnOptionRecords = columnOptions.map((opt) => ({
+          const columnOptionRecords = columnOptions.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
             columnQuestionOptionId: id,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id:
+              opt.option_id ||
+              opt.optionId ||
+              `col_opt_${Date.now().toString(36)}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
           optionRecords.push(...columnOptionRecords);
         }
@@ -484,10 +534,12 @@ export const updateQuestion = async (req, res) => {
 
       case "file upload":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
             mediaId: opt.mediaId || null,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
@@ -495,18 +547,24 @@ export const updateQuestion = async (req, res) => {
       case "date":
       case "time":
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;
 
       default:
         if (options && options.length > 0) {
-          optionRecords = options.map((opt) => ({
+          optionRecords = options.map((opt, idx) => ({
             text: opt.text || "",
             questionId: id,
+            nextQuestionId: opt.nextQuestionId || opt.next_question_id || null,
+            parentOptionId: opt.parentOptionId || opt.parent_option_id || null,
+            option_id: opt.option_id || opt.optionId || null,
+            order_index: opt.order_index ?? opt.orderIndex ?? idx,
           }));
         }
         break;

@@ -202,6 +202,10 @@ export const Option = sequelize.define(
     fromLabel: { type: DataTypes.STRING },
     toLabel: { type: DataTypes.STRING },
     icon: { type: DataTypes.STRING },
+    nextQuestionId: { type: DataTypes.STRING, allowNull: true },
+    parentOptionId: { type: DataTypes.STRING, allowNull: true },
+    option_id: { type: DataTypes.STRING, allowNull: true },
+    order_index: { type: DataTypes.INTEGER, defaultValue: 0 },
   },
   { tableName: "Option", timestamps: false }
 );

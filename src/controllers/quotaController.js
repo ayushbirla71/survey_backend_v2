@@ -1387,7 +1387,11 @@ export const markRespondentTerminated_v2 = async (req, res) => {
         "TERMINATED"
       );
 
-      return res.redirect(302, redirectUrl);
+      return res.json({
+        message: "Respondent marked as terminated",
+        redirect_url: redirectUrl,
+        respondent: result,
+      });
     }
 
     return res.json({
